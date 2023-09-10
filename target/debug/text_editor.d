@@ -1,1 +1,0 @@
-C:\dev\rust\text_editor\target\debug\text_editor.exe: C:\dev\rust\text_editor\src\document.rs C:\dev\rust\text_editor\src\main.rs C:\dev\rust\text_editor\src\maineditor.rs C:\dev\rust\text_editor\src\row.rs C:\dev\rust\text_editor\src\terminal.rs
