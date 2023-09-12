@@ -9,6 +9,7 @@
 )]
 
 mod document;
+mod highlighting;
 mod maineditor;
 mod row;
 mod terminal;
@@ -16,6 +17,7 @@ mod terminal;
 pub use document::Document;
 use maineditor::Editor;
 pub use maineditor::Position;
+pub use maineditor::SearchDirection;
 pub use row::Row;
 pub use terminal::Terminal;
 fn main() {

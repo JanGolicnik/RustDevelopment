@@ -16,7 +16,9 @@ impl Document {
         let contents = fs::read_to_string(filename)?;
         let mut rows = Vec::new();
         for value in contents.lines() {
-            rows.push(Row::from(value));
+            let mut row = Row::from(value);
+            row.highlight(None);
+            rows.push(row);
         }
         return Ok(Self {
             rows,
@@ -43,7 +45,10 @@ impl Document {
             return;
         }
 
-        let new_row = self.rows.get_mut(at.y).unwrap().split(at.x);
+        let current_row = &mut self.rows[at.y];
+        let mut new_row = current_row.split(at.x);
+        current_row.highlight(None);
+        new_row.highlight(None);
         self.rows.insert(at.y + 1, new_row);
     }
 
@@ -62,10 +67,12 @@ impl Document {
         if at.y == self.len() {
             let mut row = Row::default();
             row.insert(0, c);
+            row.highlight(None);
             self.rows.push(row);
         } else if at.y < self.len() {
             let row = self.rows.get_mut(at.y).unwrap();
             row.insert(at.x, c);
+            row.highlight(None);
         }
     }
 
@@ -82,9 +89,11 @@ impl Document {
             let next_row = self.rows.remove(at.y + 1);
             let row = self.rows.get_mut(at.y).unwrap();
             row.append(&next_row);
+            row.highlight(None);
         } else {
             let row = self.rows.get_mut(at.y).unwrap();
             row.delete(at.x);
+            row.highlight(None);
         }
     }
 
@@ -102,5 +111,58 @@ impl Document {
 
     pub fn is_dirty(&self) -> bool {
         return self.dirty;
+    }
+
+    pub fn find(&self, query: &str, from: &Position) -> Option<Position> {
+        if from.y >= self.rows.len() {
+            return None;
+        }
+
+        let mut position = Position {
+            x: from.x,
+            y: from.y,
+        };
+
+        for _ in from.y..self.rows.len() {
+            if let Some(row) = self.rows.get(position.y) {
+                if let Some(x) = row.find(&query, position.x) {
+                    position.x = x;
+                    return Some(position);
+                }
+                position.y = position.y.saturating_add(1);
+                position.x = 0;
+            } else {
+                return None;
+            }
+        }
+        return None;
+    }
+
+    pub fn rfind(&self, query: &str, to: &Position) -> Option<Position> {
+        if to.y >= self.rows.len() {
+            return None;
+        }
+
+        let mut position = Position { x: to.x, y: to.y };
+
+        for _ in 0..to.y.saturating_add(1) {
+            if let Some(row) = self.rows.get(position.y) {
+                if let Some(x) = row.rfind(&query, position.x) {
+                    position.x = x;
+                    return Some(position);
+                }
+                position.y = position.y.saturating_sub(1);
+                position.x = self.rows[position.y].len();
+            } else {
+                return None;
+            }
+        }
+        return None;
+    }
+
+    pub fn highlight(&mut self, word: Option<&str>) {
+        for row in &mut self.rows {
+            row.highlight(word);
+        }
     }
 }

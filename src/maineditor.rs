@@ -48,8 +48,13 @@ const STATUS_MESSAGES: [&str; NUM_STATUS_MESSAGES] = [
     "ChatGPT: 'Rust: Code's Best Friend.'",
     "ChatGPT: 'Elegance Meets Efficiency.'",
 ];
+#[derive(PartialEq, Copy, Clone)]
+pub enum SearchDirection {
+    Forward,
+    Backward,
+}
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Position {
     pub x: usize,
     pub y: usize,
@@ -82,7 +87,7 @@ impl Editor {
     #[must_use]
     pub fn default() -> Self {
         let args: Vec<String> = env::args().collect();
-        let mut initial_status = String::from("ESCAPE to quit | Ctrl-S to save");
+        let mut initial_status = String::from("ESCAPE to quit | Ctrl-S to save | Ctrl-F to find");
 
         let document = if args.len() > 1 {
             let file_name = &args[1];
@@ -129,6 +134,9 @@ impl Editor {
                     KeyCode::Char('s') => {
                         self.save();
                     }
+                    KeyCode::Char('f') => {
+                        self.search();
+                    }
                     _ => (),
                 }
 
@@ -155,8 +163,10 @@ impl Editor {
                     self.document.delete(&self.cursor_position);
                 }
                 KeyCode::Backspace => {
-                    self.move_cursor(KeyCode::Left);
-                    self.document.delete(&self.cursor_position);
+                    if self.cursor_position.x != 0 || self.cursor_position.y != 0 {
+                        self.move_cursor(KeyCode::Left);
+                        self.document.delete(&self.cursor_position);
+                    }
                 }
                 KeyCode::Enter => {
                     self.document.insert(&self.cursor_position, '\n');
@@ -376,14 +386,17 @@ impl Editor {
         self.status_message = StatusMessage::from(STATUS_MESSAGES[index].to_string());
     }
 
-    fn prompt(&mut self, prompt: &str) -> Result<Option<String>, std::io::Error> {
+    fn prompt<C>(&mut self, prompt: &str, mut callback: C) -> Result<Option<String>, std::io::Error>
+    where
+        C: FnMut(&mut Self, KeyEvent, &String),
+    {
         let mut result = String::new();
         loop {
             self.status_message = StatusMessage::from(format!("{}{}", prompt, result));
             self.refresh_screen();
-            let e = Terminal::read_key()?;
-            if e.kind == KeyEventKind::Press {
-                match e.code {
+            let key_event = Terminal::read_key()?;
+            if key_event.kind == KeyEventKind::Press {
+                match key_event.code {
                     KeyCode::Backspace => {
                         if !result.is_empty() {
                             result.pop();
@@ -391,6 +404,7 @@ impl Editor {
                     }
                     KeyCode::Esc => {
                         result.truncate(0);
+                        self.status_message = StatusMessage::from(String::new());
                         return Ok(None);
                     }
                     KeyCode::Enter => {
@@ -401,19 +415,21 @@ impl Editor {
                         return Ok(Some(result));
                     }
                     KeyCode::Char(c) => {
-                        if e.modifiers != KeyModifiers::CONTROL {
+                        if key_event.modifiers != KeyModifiers::CONTROL {
                             result.push(c);
                         }
                     }
                     _ => (),
                 }
             }
+
+            callback(self, key_event, &result);
         }
     }
 
     fn save(&mut self) {
         if self.document.file_name.is_none() {
-            let new_name: Option<String> = self.prompt("Save as: ").unwrap_or(None);
+            let new_name: Option<String> = self.prompt("Save as: ", |_, _, _| {}).unwrap_or(None);
             if new_name.is_none() {
                 self.status_message = StatusMessage::from("Save aborted.".to_string());
                 return;
@@ -426,6 +442,58 @@ impl Editor {
         } else {
             StatusMessage::from("error saving file".to_string())
         }
+    }
+
+    fn search(&mut self) {
+        let old_position = self.cursor_position.clone();
+        let mut direction = SearchDirection::Forward;
+        let query = self
+            .prompt(
+                "Search (ESC to cancel, arrow keys to navigate): ",
+                |editor, key_event, query| {
+                    let mut moved = false;
+                    if key_event.kind == KeyEventKind::Press {
+                        match key_event.code {
+                            KeyCode::Right | KeyCode::Down => {
+                                direction = SearchDirection::Forward;
+                                editor.move_cursor(KeyCode::Right);
+                                moved = true;
+                            }
+                            KeyCode::Left | KeyCode::Up => {
+                                direction = SearchDirection::Backward;
+                            }
+                            _ => (),
+                        }
+                        if direction == SearchDirection::Forward {
+                            if let Some(positon) =
+                                editor.document.find(&query, &editor.cursor_position)
+                            {
+                                editor.cursor_position = positon;
+                                editor.scroll();
+                            } else if moved {
+                                editor.move_cursor(KeyCode::Left);
+                            }
+                        } else {
+                            if let Some(positon) =
+                                editor.document.rfind(&query, &editor.cursor_position)
+                            {
+                                editor.cursor_position = positon;
+                                editor.scroll();
+                            } else if moved {
+                                editor.move_cursor(KeyCode::Left);
+                            }
+                        }
+                        editor.document.highlight(Some(query));
+                    }
+                },
+            )
+            .unwrap_or(None);
+
+        if query.is_none() {
+            self.cursor_position = old_position;
+            self.scroll();
+        }
+        self.document.highlight(None);
     }
 }
 
