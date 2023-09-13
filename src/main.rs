@@ -1,5 +1,7 @@
 use duration_string::DurationString;
 use notify_rust::Notification;
+use winconsole::window;
+
 use std::{env, thread, time::Duration};
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -13,6 +15,9 @@ fn main() {
         let summary = &args[2];
         let duration: Duration = args[3].parse::<DurationString>().unwrap().into();
         let icon = &args[4];
+
+        window::hide();
+
         run(title, summary, &duration, icon);
     } else {
         println!("ERROR: incorrect number of arguments, use > reminders help for usage");
