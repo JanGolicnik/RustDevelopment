@@ -82,6 +82,7 @@ pub struct Editor {
     document: Document,
     status_message: StatusMessage,
     quit_times: u8,
+    highlighted_word: Option<String>,
 }
 impl Editor {
     #[must_use]
@@ -111,6 +112,7 @@ impl Editor {
             offset: Position::default(),
             status_message: StatusMessage::from(initial_status),
             quit_times: 0,
+            highlighted_word: None,
         }
     }
 
@@ -279,16 +281,24 @@ impl Editor {
         if self.should_quit {
             Terminal::clear_screen();
             println!("Goodbye.\r");
-            return;
+        } else {
+            self.document.highlight(
+                &self.highlighted_word,
+                Some(
+                    self.offset
+                        .y
+                        .saturating_add(self.terminal.size().height as usize),
+                ),
+            );
+            Terminal::flush();
+            self.draw_rows();
+            self.draw_status_bar();
+            self.draw_message_bar();
+            Terminal::cursor_position(&Position {
+                x: self.cursor_position.x.saturating_sub(self.offset.x),
+                y: self.cursor_position.y.saturating_sub(self.offset.y),
+            });
         }
-        Terminal::flush();
-        self.draw_rows();
-        self.draw_status_bar();
-        self.draw_message_bar();
-        Terminal::cursor_position(&Position {
-            x: self.cursor_position.x.saturating_sub(self.offset.x),
-            y: self.cursor_position.y.saturating_sub(self.offset.y),
-        });
     }
 
     fn draw_rows(&self) {
@@ -348,7 +358,8 @@ impl Editor {
         );
 
         let line_indicator = format!(
-            "{}/{}",
+            "{} - {}/{}",
+            self.document.file_type(),
             self.cursor_position.y.saturating_add(1),
             self.document.len()
         );
@@ -483,7 +494,7 @@ impl Editor {
                                 editor.move_cursor(KeyCode::Left);
                             }
                         }
-                        editor.document.highlight(Some(query));
+                        editor.highlighted_word = Some(query.to_string());
                     }
                 },
             )
@@ -493,7 +504,7 @@ impl Editor {
             self.cursor_position = old_position;
             self.scroll();
         }
-        self.document.highlight(None);
+        self.highlighted_word = None;
     }
 }
 
