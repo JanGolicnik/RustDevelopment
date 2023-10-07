@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{cmp::Ordering, env, time::Duration};
 
 use bevy::{core_pipeline::clear_color::ClearColorConfig, input::mouse::MouseWheel, prelude::*};
 enum CellState {
@@ -29,20 +29,44 @@ enum GameState {
 struct SimulationTimer(Timer);
 
 fn main() {
+    let args: Vec<String> = env::args().collect();
+
+    let mut board = Board {
+        width: 10,
+        height: 10,
+        cell_states: Vec::new(),
+    };
+
+    match args.len().cmp(&2) {
+        Ordering::Less => {}
+        Ordering::Equal => {
+            if let Ok(parsed) = args[1].parse::<usize>() {
+                board.width = parsed;
+                board.height = parsed;
+            }
+        }
+        Ordering::Greater => {
+            if let Ok(parsed) = args[1].parse::<usize>() {
+                board.width = parsed;
+            }
+            if let Ok(parsed) = args[2].parse::<usize>() {
+                board.height = parsed;
+            }
+        }
+    }
+
+    let aspect_ratio = board.width as f32 / board.height as f32;
+
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "sim".into(),
-                resolution: (1000., 1000.).into(),
+                resolution: (1000.0 * aspect_ratio, 1000.0 / aspect_ratio).into(),
                 ..default()
             }),
             ..default()
         }))
-        .insert_resource(Board {
-            width: 250,
-            height: 250,
-            cell_states: Vec::new(),
-        })
+        .insert_resource(board)
         .insert_resource(SimulationTimer(Timer::new(
             Duration::from_secs_f32(0.5),
             TimerMode::Repeating,
@@ -67,8 +91,8 @@ fn startup(mut commands: Commands, window: Query<&Window>, mut board: ResMut<Boa
         ..default()
     });
 
-    for row in 0..board.width {
-        for col in 0..board.height {
+    for row in 0..board.height {
+        for col in 0..board.width {
             board.cell_states.push(CellState::Dead);
 
             let window_x = window.resolution.physical_width() as f32;
@@ -80,8 +104,8 @@ fn startup(mut commands: Commands, window: Query<&Window>, mut board: ResMut<Boa
                 0.0,
             );
 
-            let position_x = scale.x * row as f32 - window_x * 0.5 + scale.x * 0.5;
-            let position_y = window_y * 0.5 - scale.y * col as f32 - scale.y * 0.5;
+            let position_x = scale.x * col as f32 - window_x * 0.5 + scale.x * 0.5;
+            let position_y = window_y * 0.5 - scale.y * row as f32 - scale.y * 0.5;
 
             commands.spawn((
                 SpriteBundle {
@@ -148,7 +172,7 @@ fn simulation_system(
                         col_neighbour as usize
                     };
 
-                    let neighbour_index = row_neighbour * board.height + col_neighbour;
+                    let neighbour_index = row_neighbour * board.width + col_neighbour;
 
                     match board.cell_states[neighbour_index] {
                         CellState::Alive => living_neighbours += 1,
@@ -157,7 +181,7 @@ fn simulation_system(
                 }
             }
 
-            let index = row * board.height + col;
+            let index = row * board.width + col;
 
             match board.cell_states[index] {
                 CellState::Alive => {
@@ -188,7 +212,7 @@ fn simulation_system(
 
 fn refresh_cells_system(board: Res<Board>, mut cell_query: Query<(&mut Sprite, &Cell)>) {
     cell_query.for_each_mut(|(mut sprite, cell)| {
-        let cell_index = cell.row * board.height + cell.col;
+        let cell_index = cell.row * board.width + cell.col;
         match board.cell_states[cell_index] {
             CellState::Alive => sprite.as_mut().color = Color::WHITE,
             CellState::Dead => sprite.as_mut().color = Color::BLACK,
@@ -219,11 +243,14 @@ fn mouse_input_system(
             window.resolution.physical_height() as f32,
         );
 
+        pos.x = pos.x.min(0.9999).max(0.0);
+        pos.y = pos.y.min(0.9999).max(0.0);
+
         pos *= Vec2::new(board.width as f32, board.height as f32);
 
-        let row = pos.x as usize;
-        let col = pos.y as usize;
-        let index = row * board.height + col;
+        let row = pos.y as usize;
+        let col = pos.x as usize;
+        let index = row * board.width + col;
 
         if mouse_input.pressed(MouseButton::Left) {
             board.cell_states[index] = CellState::Alive;
