@@ -1,5 +1,7 @@
 use unicode_segmentation::{Graphemes, UnicodeSegmentation};
 
+use crate::tokenization_error::TokenizationError;
+
 #[derive(Debug)]
 pub enum Token {
     Return,
@@ -7,7 +9,7 @@ pub enum Token {
     Semicolon,
 }
 
-pub fn tokenize(file: &String) -> Vec<Token> {
+pub fn tokenize(file: &String) -> Result<Vec<Token>, TokenizationError> {
     let mut tokens: Vec<Token> = Vec::new();
 
     let mut last_token_index = 0;
@@ -15,16 +17,17 @@ pub fn tokenize(file: &String) -> Vec<Token> {
     let file_len = file.graphemes(true).count();
 
     for (index, grapheme) in file.graphemes(true).enumerate() {
-        println!("{grapheme}");
-
         if index + 1 == file_len || is_separator(grapheme) {
             if let Some(token) = get_token(file[last_token_index..index].graphemes(true)) {
                 tokens.push(token);
             } else {
-                eprintln!(
-                    "INVALID TOKEN AT {last_token_index} '{}'",
-                    file[last_token_index..index + 1].graphemes(true).as_str()
-                );
+                return Err(TokenizationError::new(
+                    format!(
+                        "invalid token {}",
+                        file[last_token_index..index + 1].graphemes(true).as_str()
+                    )
+                    .as_str(),
+                ));
             }
 
             if let Some(token) = tokenize_separator(grapheme) {
@@ -35,13 +38,11 @@ pub fn tokenize(file: &String) -> Vec<Token> {
         }
     }
 
-    tokens
+    Ok(tokens)
 }
 
 fn get_token(graphemes: Graphemes) -> Option<Token> {
     let chars = graphemes.as_str();
-
-    println!("getting token {chars}");
 
     match graphemes.as_str() {
         "vrni" => Some(Token::Return),

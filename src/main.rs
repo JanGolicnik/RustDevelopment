@@ -4,9 +4,13 @@ use std::{
     process::{Command, Output},
 };
 
-use tokenizer::{tokenize, Token};
+use parsing::parse;
+use tokenization::{tokenize, Token};
 
-mod tokenizer;
+mod parse_error;
+mod parsing;
+mod tokenization;
+mod tokenization_error;
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -17,14 +21,23 @@ fn main() {
     let file_path = Path::new(&args[1]);
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");
 
-    let tokens = tokenize(&file_string);
-    tokens.iter().for_each(|token| println!("{:?}", token));
+    match tokenize(&file_string) {
+        Ok(tokens) => {
+            tokens.iter().for_each(|token| println!("{:?}", token));
+            match parse(tokens) {
+                Ok(output) => assemble(output),
+                Err(e) => eprintln!("{}", e),
+            }
+        }
+        Err(e) => eprintln!("{}", e),
+    }
+}
 
-    let output = tokens_to_assembly(tokens);
-    println!("OUTPUT: \n{output}");
+fn assemble(code: String) {
+    println!("OUTPUT: \n{code}");
 
     fs::create_dir_all("out").expect("failed to create dir");
-    fs::write("out/assembly.asm", output).expect("error writing to file");
+    fs::write("out/assembly.asm", code).expect("error writing to file");
 
     let nasm_output = Command::new("nasm")
         .arg("-felf64")
