@@ -1,69 +1,50 @@
-use crate::parse_error::ParseError;
-use crate::tokenization::Token;
+use std::collections::HashMap;
 
-struct ReturnNode {
-    expr: Expression,
+use crate::compilation_error::CompilationError;
+use crate::parsing_nodes::ProgramNode;
+use crate::tokenization::Tokens;
+
+pub struct Variable {
+    pub stack_position: usize,
 }
 
-impl ReturnNode {
-    fn parse(tokens: &[Token], index: &mut usize) -> Result<Self, ParseError> {
-        *index += 1;
-        Ok(ReturnNode {
-            expr: Expression::parse(tokens, index)?,
-        })
+pub struct ParsingContext {
+    stack_size: usize,
+    pub variables: HashMap<String, Variable>,
+    pub output: String,
+}
+
+impl ParsingContext {
+    pub fn push_on_stack(&mut self, register: &str) {
+        self.push_line(format!("    push {}", register).as_str());
+        self.stack_size += 8;
     }
 
-    fn to_asm(&self) -> String {
-        let val = match self.expr {
-            Expression::Literal(val) => val,
-            _ => 0,
-        };
-        format!("    mov rax, 60\n    mov rdi, {}\n    syscall", val)
+    pub fn pop_from_stack(&mut self, register: &str) {
+        self.push_line(format!("    pop {}", register).as_str());
+        self.stack_size -= 8;
     }
-}
 
-enum Expression {
-    Literal(i32),
-}
+    pub fn push_line(&mut self, string: &str) {
+        self.output.push_str(string);
+        self.output.push('\n');
+    }
 
-impl Expression {
-    fn parse(tokens: &[Token], index: &mut usize) -> Result<Self, ParseError> {
-        if let Some(lit_token) = tokens.get(*index) {
-            match lit_token {
-                Token::Int(int_token_val) => {
-                    *index += 1;
-                    if let Some(semi_token) = tokens.get(*index) {
-                        match semi_token {
-                            Token::Semicolon => Ok(Expression::Literal(*int_token_val)),
-                            _ => Err(ParseError::new("Missing semicolon")),
-                        }
-                    } else {
-                        Err(ParseError::new("Missing token"))
-                    }
-                }
-                _ => Err(ParseError::new("Token should be literal")),
-            }
-        } else {
-            Err(ParseError::new("Missing token"))
-        }
+    pub fn stack_size(&self) -> usize {
+        self.stack_size
     }
 }
 
-pub fn parse(tokens: Vec<Token>) -> Result<String, ParseError> {
-    let mut index = 0;
+pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
+    let mut parsing_context: ParsingContext = ParsingContext {
+        stack_size: 0,
+        variables: HashMap::new(),
+        output: String::new(),
+    };
 
-    let token = &tokens[index];
-    match *token {
-        Token::Return => {
-            let root_node = ReturnNode::parse(&tokens, &mut index)?;
+    let root = ProgramNode::parse(tokens)?;
 
-            let mut output = "global _start:\n_start:\n".to_string();
-            output += &root_node.to_asm();
+    root.to_asm(&mut parsing_context)?;
 
-            Ok(output)
-        }
-        _ => Err(ParseError::new("Unexpected token")),
-    }
-
-    // Err(ParseError::new("parsing isnt written :/"))
+    Ok(parsing_context.output)
 }

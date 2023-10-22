@@ -1,1 +1,3 @@
-vrni 75;
+let x = 1 + 1;
+let y = x + x;
+return y;
