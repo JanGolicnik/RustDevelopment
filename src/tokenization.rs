@@ -6,11 +6,48 @@ use crate::compilation_error::CompilationError;
 pub enum Token {
     Return,
     Int(i32),
-    Identifier(String),
+    Identifier(String), // Change the representation to String
     EndStatement,
     Equals,
     Declaration,
-    Addition,
+    Plus,
+    Star,
+    Minus,
+    Slash,
+    OpenBracket,
+    ClosedBracket,
+}
+
+pub struct OperatorInfo(pub usize, pub bool);
+
+impl Clone for Token {
+    fn clone(&self) -> Self {
+        match self {
+            Token::Return => Token::Return,
+            Token::Int(value) => Token::Int(*value),
+            Token::Identifier(identifier) => Token::Identifier(identifier.clone()), // Manually clone the String
+            Token::EndStatement => Token::EndStatement,
+            Token::Equals => Token::Equals,
+            Token::Declaration => Token::Declaration,
+            Token::Plus => Token::Plus,
+            Token::Star => Token::Star,
+            Token::Minus => Token::Minus,
+            Token::Slash => Token::Slash,
+            Token::OpenBracket => Token::OpenBracket,
+            Token::ClosedBracket => Token::ClosedBracket,
+        }
+    }
+}
+impl Token {
+    pub fn get_operator_info(&self) -> Option<OperatorInfo> {
+        match self {
+            Token::Plus => Some(OperatorInfo(0, true)),
+            Token::Minus => Some(OperatorInfo(0, false)),
+            Token::Star => Some(OperatorInfo(1, true)),
+            Token::Slash => Some(OperatorInfo(1, false)),
+            _ => None,
+        }
+    }
 }
 
 pub struct Tokens {
@@ -35,6 +72,14 @@ impl Tokens {
 
     pub fn peek(&mut self, offset: usize) -> Result<&Token, CompilationError> {
         if let Some(token) = self.tokens.get(self.index + offset) {
+            Ok(token)
+        } else {
+            Err(CompilationError::new("Missing Token"))
+        }
+    }
+
+    pub fn _peek_back(&mut self, offset: usize) -> Result<&Token, CompilationError> {
+        if let Some(token) = self.tokens.get(self.index - offset) {
             Ok(token)
         } else {
             Err(CompilationError::new("Missing Token"))
@@ -105,7 +150,10 @@ fn str_to_token(chars: &str) -> Option<Token> {
 }
 
 fn is_separator(grapheme: &str) -> bool {
-    matches!(grapheme, ";" | " " | "=" | "\n" | "+")
+    matches!(
+        grapheme,
+        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")"
+    )
 }
 
 fn tokenize_separator(grapheme: &str) -> Option<Token> {
@@ -113,7 +161,12 @@ fn tokenize_separator(grapheme: &str) -> Option<Token> {
     match grapheme {
         ";" => Some(Token::EndStatement),
         "=" => Some(Token::Equals),
-        "+" => Some(Token::Addition),
+        "+" => Some(Token::Plus),
+        "*" => Some(Token::Star),
+        "-" => Some(Token::Minus),
+        "/" => Some(Token::Slash),
+        "(" => Some(Token::OpenBracket),
+        ")" => Some(Token::ClosedBracket),
         _ => None,
     }
 }

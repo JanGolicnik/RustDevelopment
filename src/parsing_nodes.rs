@@ -1,7 +1,7 @@
 use crate::{
     compilation_error::CompilationError,
     parsing::{ParsingContext, Variable},
-    tokenization::{Token, Tokens},
+    tokenization::{OperatorInfo, Token, Tokens},
 };
 
 pub struct ProgramNode {
@@ -24,10 +24,18 @@ enum Expression {
         left: Box<Expression>,
         right: Box<Expression>,
     },
-    // Multiplication {
-    //     left: Box<Expression>,
-    //     right: Box<Expression>,
-    // },
+    Multiplication {
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
+    Subtraction {
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
+    Division {
+        left: Box<Expression>,
+        right: Box<Expression>,
+    },
 }
 
 impl Term {
@@ -59,29 +67,74 @@ impl Term {
                     Err(CompilationError::new("Undeclared variable {name}"))
                 }
             }
-            _ => Err(CompilationError::new("term not implemented yet")),
         }
     }
 }
 
 impl Expression {
-    fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        let left_term = Term::parse(tokens)?;
-        let term_expression = Expression::Term(left_term);
-        match tokens.peek(0)? {
-            Token::Addition => {
+    fn parse(tokens: &mut Tokens, min_precedence: usize) -> Result<Self, CompilationError> {
+        let mut expr = match tokens.peek(0)? {
+            Token::OpenBracket => {
                 tokens.next()?;
-                let right = Expression::parse(tokens)?;
-                Ok(Expression::Addition {
-                    left: Box::new(term_expression),
-                    right: Box::new(right),
-                })
+                let val = Expression::parse(tokens, 0)?;
+                match tokens.next()? {
+                    Token::ClosedBracket => val,
+                    _ => {
+                        return Err(CompilationError::new("Expected close paranthases"));
+                    }
+                }
             }
-            Token::EndStatement => Ok(term_expression),
-            _ => Err(CompilationError::new(
-                format!("unexpected token {:?}", tokens.peek(1)).as_str(),
-            )),
+            _ => Expression::Term(Term::parse(tokens)?),
+        };
+
+        loop {
+            let token = tokens.peek(0)?.clone();
+            if let Some(OperatorInfo(precedence, associative)) = token.get_operator_info() {
+                if precedence < min_precedence {
+                    break;
+                }
+
+                let next_min_precedence = if associative {
+                    precedence + 1
+                } else {
+                    precedence
+                };
+                tokens.next()?;
+                let right_expression = Expression::parse(tokens, next_min_precedence)?;
+
+                match token {
+                    Token::Plus => {
+                        expr = Expression::Addition {
+                            left: Box::new(expr),
+                            right: Box::new(right_expression),
+                        }
+                    }
+                    Token::Star => {
+                        expr = Expression::Multiplication {
+                            left: Box::new(expr),
+                            right: Box::new(right_expression),
+                        }
+                    }
+                    Token::Slash => {
+                        expr = Expression::Division {
+                            left: Box::new(expr),
+                            right: Box::new(right_expression),
+                        }
+                    }
+                    Token::Minus => {
+                        expr = Expression::Subtraction {
+                            left: Box::new(expr),
+                            right: Box::new(right_expression),
+                        }
+                    }
+                    _ => return Err(CompilationError::new("invalid operator")),
+                }
+            } else {
+                break;
+            }
         }
+
+        Ok(expr)
     }
 
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
@@ -93,20 +146,46 @@ impl Expression {
             Expression::Addition { left, right } => {
                 left.to_asm(parsing_context)?;
                 right.to_asm(parsing_context)?;
-                parsing_context.pop_from_stack("rax");
                 parsing_context.pop_from_stack("rdi");
+                parsing_context.pop_from_stack("rax");
                 parsing_context.push_line("    add rdi, rax");
                 parsing_context.push_on_stack("rdi");
                 Ok(())
             }
-            _ => Err(CompilationError::new("not implemented yet")),
+            Expression::Multiplication { left, right } => {
+                left.to_asm(parsing_context)?;
+                right.to_asm(parsing_context)?;
+                parsing_context.pop_from_stack("rdi");
+                parsing_context.pop_from_stack("rax");
+                parsing_context.push_line("    mul rdi");
+                parsing_context.push_on_stack("rax");
+                Ok(())
+            }
+            Expression::Subtraction { left, right } => {
+                left.to_asm(parsing_context)?;
+                right.to_asm(parsing_context)?;
+                parsing_context.pop_from_stack("rdi");
+                parsing_context.pop_from_stack("rax");
+                parsing_context.push_line("    sub rax, rdi");
+                parsing_context.push_on_stack("rax");
+                Ok(())
+            }
+            Expression::Division { left, right } => {
+                left.to_asm(parsing_context)?;
+                right.to_asm(parsing_context)?;
+                parsing_context.pop_from_stack("rdi");
+                parsing_context.pop_from_stack("rax");
+                parsing_context.push_line("    div rdi");
+                parsing_context.push_on_stack("rax");
+                Ok(())
+            }
         }
     }
 }
 
 impl StatementNode {
     fn parse_return(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        let expr = Expression::parse(tokens)?;
+        let expr = Expression::parse(tokens, 0)?;
         match tokens.next()? {
             Token::EndStatement => Ok(StatementNode::Return { expr }),
             _ => Err(CompilationError::new("expected semicolon")),
@@ -120,7 +199,7 @@ impl StatementNode {
 
                 match tokens.next()? {
                     Token::Equals => {
-                        let expr = Expression::parse(tokens)?;
+                        let expr = Expression::parse(tokens, 0)?;
                         match tokens.next()? {
                             Token::EndStatement => Ok(StatementNode::Declaration {
                                 literal: name,
