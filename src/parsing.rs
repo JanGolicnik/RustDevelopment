@@ -8,10 +8,55 @@ pub struct Variable {
     pub stack_position: usize,
 }
 
+pub struct Scope {
+    variables: HashMap<String, Variable>,
+    parent: usize,
+}
+
 pub struct ParsingContext {
     stack_size: usize,
-    pub variables: HashMap<String, Variable>,
+    scopes: Vec<Scope>,
     pub output: String,
+    current_scope: usize,
+}
+
+impl Clone for Variable {
+    fn clone(&self) -> Self {
+        Self {
+            stack_position: self.stack_position,
+        }
+    }
+}
+
+impl Scope {
+    fn get_var_recursive(&self, scopes: &Vec<Scope>, name: &String) -> Option<Variable> {
+        if let Some(var) = self.variables.get(name) {
+            Some(var.clone())
+        } else if let Some(scope) = scopes.get(self.parent) {
+            scope.get_var_recursive(scopes, name)
+        } else {
+            None
+        }
+    }
+
+    fn get_var(&self, name: &String) -> Option<Variable> {
+        self.variables.get(name).cloned()
+    }
+
+    fn add_var_recursive(
+        &mut self,
+        scopes: &Vec<Scope>,
+        name: &String,
+        stack_position: usize,
+    ) -> bool {
+        if self.get_var_recursive(scopes, name).is_some() {
+            false
+        } else {
+            self.variables
+                .insert(name.clone(), Variable { stack_position });
+            true
+        }
+    }
 }
 
 impl ParsingContext {
@@ -30,19 +75,67 @@ impl ParsingContext {
         self.output.push('\n');
     }
 
-    pub fn stack_size(&self) -> usize {
-        self.stack_size
+    pub fn get_var(&mut self, name: &String) -> Option<Variable> {
+        let mut current_scope_index = self.current_scope;
+
+        while let Some(scope) = self.scopes.get_mut(current_scope_index) {
+            if let Some(var) = scope.variables.get(name) {
+                return Some(var.clone());
+            } else {
+                current_scope_index = scope.parent;
+            }
+        }
+        None
+    }
+
+    pub fn add_var(&mut self, name: String) -> bool {
+        // let mut current_scope_index = self.current_scope;
+        // while let Some(scope) = self.scopes.get_mut(current_scope_index) {
+        //     if scope.variables.get(&name).is_some() {
+        //         return false;
+        //     } else {
+        //         current_scope_index = scope.parent;
+        //     }
+        // }
+        if let Some(scope) = self.scopes.get_mut(self.current_scope) {
+            scope.variables.insert(
+                name,
+                Variable {
+                    stack_position: self.stack_size,
+                },
+            );
+            true
+        } else {
+            false
+        }
+    }
+
+    pub fn push_scope(&mut self) {
+        self.scopes.push(Scope {
+            variables: HashMap::new(),
+            parent: self.current_scope,
+        });
+        self.current_scope = self.scopes.len() - 1
+    }
+
+    pub fn pop_scope(&mut self) {
+        if let Some(scope) = self.scopes.pop() {
+            self.current_scope = scope.parent;
+        }
     }
 }
 
 pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
     let mut parsing_context: ParsingContext = ParsingContext {
         stack_size: 0,
-        variables: HashMap::new(),
         output: String::new(),
+        scopes: Vec::new(),
+        current_scope: usize::MAX,
     };
 
-    let root = ProgramNode::parse(tokens)?;
+    parsing_context.push_scope();
+
+    let root = ProgramNode::parse(tokens, &mut parsing_context)?;
 
     root.to_asm(&mut parsing_context)?;
 

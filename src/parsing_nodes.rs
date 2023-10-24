@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::{
     compilation_error::CompilationError,
     parsing::{ParsingContext, Variable},
@@ -11,6 +13,8 @@ pub struct ProgramNode {
 enum StatementNode {
     Declaration { literal: String, expr: Expression },
     Return { expr: Expression },
+    StartScope,
+    EndScope,
 }
 
 enum Term {
@@ -40,13 +44,16 @@ enum Expression {
 
 impl Term {
     fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        match tokens.next()? {
+        let token = tokens.next()?;
+        match token {
             Token::Int(int_token_val) => Ok(Term::Int(*int_token_val)),
             Token::Identifier(name) => {
                 let name = name.clone();
                 Ok(Term::Identifier(name))
             }
-            _ => Err(CompilationError::new("Weird term")),
+            _ => Err(CompilationError::new(
+                format!("Weird term {:?}", token).as_str(),
+            )),
         }
     }
 
@@ -58,7 +65,7 @@ impl Term {
                 Ok(())
             }
             Term::Identifier(name) => {
-                if let Some(var) = parsing_context.variables.get(name) {
+                if let Some(var) = parsing_context.get_var(name) {
                     parsing_context
                         .push_line(format!("    mov rdi, [rbp - {}]", var.stack_position).as_str());
                     parsing_context.push_on_stack("rdi");
@@ -133,7 +140,6 @@ impl Expression {
                 break;
             }
         }
-
         Ok(expr)
     }
 
@@ -220,19 +226,11 @@ impl StatementNode {
             StatementNode::Declaration { literal, expr } => {
                 expr.to_asm(parsing_context)?;
                 let name = literal.clone();
-                if parsing_context
-                    .variables
-                    .insert(
-                        name,
-                        Variable {
-                            stack_position: parsing_context.stack_size(),
-                        },
-                    )
-                    .is_some()
-                {
-                    Err(CompilationError::new("Variable {name} already exists"))
+                if parsing_context.add_var(name) {
                 } else {
-                    Ok(())
+                    return Err(CompilationError::new(
+                        format!("Variable {literal} already exists").as_str(),
+                    ));
                 }
             }
             StatementNode::Return { expr } => {
@@ -240,26 +238,40 @@ impl StatementNode {
                 parsing_context.push_line("    mov rax, 60");
                 parsing_context.pop_from_stack("rdi");
                 parsing_context.push_line("    syscall");
-                Ok(())
+            }
+            StatementNode::StartScope => {
+                parsing_context.push_scope();
+            }
+            StatementNode::EndScope => {
+                parsing_context.pop_scope();
+            }
+            _ => {
+                return Err(CompilationError::new("statement not implemented yet"));
             }
         }
+        Ok(())
     }
 }
 
 impl ProgramNode {
-    pub fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
+    pub fn parse(
+        tokens: &mut Tokens,
+        parsing_context: &mut ParsingContext,
+    ) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
 
         while let Ok(token) = tokens.next() {
             let stmt = match token {
                 Token::Return => StatementNode::parse_return(tokens)?,
                 Token::Declaration => StatementNode::parse_declaration(tokens)?,
+                Token::OpenCurly => StatementNode::StartScope,
+                Token::ClosedCurly => StatementNode::EndScope,
                 _ => {
                     return Err(CompilationError::new("Unexpected token"));
                 }
             };
 
-            statements.push(stmt)
+            statements.push(stmt);
         }
 
         Ok(Self { statements })

@@ -1,2 +1,9 @@
-let x = 4 * (5 + 1);
-return x;
+let y = 2;
+
+{
+    let y = 1;
+    {
+        let y = 4;
+    }
+}
+return y;

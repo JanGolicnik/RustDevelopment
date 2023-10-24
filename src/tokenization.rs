@@ -16,6 +16,9 @@ pub enum Token {
     Slash,
     OpenBracket,
     ClosedBracket,
+    OpenCurly,
+    ClosedCurly,
+    If,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -35,9 +38,13 @@ impl Clone for Token {
             Token::Slash => Token::Slash,
             Token::OpenBracket => Token::OpenBracket,
             Token::ClosedBracket => Token::ClosedBracket,
+            Token::OpenCurly => Token::OpenCurly,
+            Token::ClosedCurly => Token::ClosedCurly,
+            Token::If => Token::If,
         }
     }
 }
+
 impl Token {
     pub fn get_operator_info(&self) -> Option<OperatorInfo> {
         match self {
@@ -138,6 +145,7 @@ fn tokenize_word(word: &String) -> Option<Token> {
     match chars {
         "return" => Some(Token::Return),
         "let" => Some(Token::Declaration),
+        "if" => Some(Token::If),
         _ => str_to_token(word),
     }
 }
@@ -152,7 +160,7 @@ fn str_to_token(chars: &str) -> Option<Token> {
 fn is_separator(grapheme: &str) -> bool {
     matches!(
         grapheme,
-        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")"
+        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")" | "{" | "}"
     )
 }
 
@@ -167,6 +175,8 @@ fn tokenize_separator(grapheme: &str) -> Option<Token> {
         "/" => Some(Token::Slash),
         "(" => Some(Token::OpenBracket),
         ")" => Some(Token::ClosedBracket),
+        "{" => Some(Token::OpenCurly),
+        "}" => Some(Token::ClosedCurly),
         _ => None,
     }
 }
