@@ -30,27 +30,27 @@ impl Clone for Variable {
 }
 
 impl Scope {
-    fn get_var_recursive(&self, scopes: &Vec<Scope>, name: &String) -> Option<Variable> {
+    fn _get_var_recursive(&self, scopes: &Vec<Scope>, name: &String) -> Option<Variable> {
         if let Some(var) = self.variables.get(name) {
             Some(var.clone())
         } else if let Some(scope) = scopes.get(self.parent) {
-            scope.get_var_recursive(scopes, name)
+            scope._get_var_recursive(scopes, name)
         } else {
             None
         }
     }
 
-    fn get_var(&self, name: &String) -> Option<Variable> {
+    fn _get_var(&self, name: &String) -> Option<Variable> {
         self.variables.get(name).cloned()
     }
 
-    fn add_var_recursive(
+    fn _add_var_recursive(
         &mut self,
         scopes: &Vec<Scope>,
         name: &String,
         stack_position: usize,
     ) -> bool {
-        if self.get_var_recursive(scopes, name).is_some() {
+        if self._get_var_recursive(scopes, name).is_some() {
             false
         } else {
             self.variables
@@ -78,6 +78,7 @@ impl ParsingContext {
 
     pub fn get_var(&mut self, name: &String) -> Option<Variable> {
         let mut current_scope_index = self.current_scope;
+        println!("{current_scope_index} {}", self.scopes.len());
 
         while let Some(scope) = self.scopes.get_mut(current_scope_index) {
             if let Some(var) = scope.variables.get(name) {
@@ -112,6 +113,7 @@ impl ParsingContext {
     }
 
     pub fn push_scope(&mut self) {
+        println!("pushed scope");
         self.scopes.push(Scope {
             variables: HashMap::new(),
             parent: self.current_scope,
@@ -120,6 +122,7 @@ impl ParsingContext {
     }
 
     pub fn pop_scope(&mut self) {
+        println!("popped scope");
         if let Some(scope) = self.scopes.pop() {
             self.current_scope = scope.parent;
         }

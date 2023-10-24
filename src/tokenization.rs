@@ -146,6 +146,8 @@ fn tokenize_word(word: &String) -> Option<Token> {
         "return" => Some(Token::Return),
         "let" => Some(Token::Declaration),
         "if" => Some(Token::If),
+        "true" => Some(Token::Int(1)),
+        "false" => Some(Token::Int(0)),
         _ => str_to_token(word),
     }
 }

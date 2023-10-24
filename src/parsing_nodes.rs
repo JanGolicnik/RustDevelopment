@@ -72,13 +72,16 @@ impl Term {
                 Ok(())
             }
             Term::Identifier(name) => {
+                println!("AAAAAAAAAAA");
                 if let Some(var) = parsing_context.get_var(name) {
                     parsing_context
                         .push_line(format!("    mov rdi, [rbp - {}]", var.stack_position).as_str());
                     parsing_context.push_on_stack("rdi");
                     Ok(())
                 } else {
-                    Err(CompilationError::new("Undeclared variable {name}"))
+                    Err(CompilationError::new(
+                        format!("Undeclared variable {name}").as_str(),
+                    ))
                 }
             }
         }
@@ -272,7 +275,6 @@ impl StatementNode {
                     statements.push(stmt);
                 }
 
-                statements.push(StatementNode::EndScope);
                 Ok(StatementNode::If { expr, statements })
             }
             _ => Err(CompilationError::new("expected {")),
