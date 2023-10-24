@@ -1,8 +1,6 @@
-use std::collections::HashMap;
-
 use crate::{
     compilation_error::CompilationError,
-    parsing::{ParsingContext, Variable},
+    parsing::ParsingContext,
     tokenization::{OperatorInfo, Token, Tokens},
 };
 
@@ -11,10 +9,19 @@ pub struct ProgramNode {
 }
 
 enum StatementNode {
-    Declaration { literal: String, expr: Expression },
-    Return { expr: Expression },
+    Declaration {
+        literal: String,
+        expr: Expression,
+    },
+    Return {
+        expr: Expression,
+    },
     StartScope,
     EndScope,
+    If {
+        expr: Expression,
+        statements: Vec<StatementNode>,
+    },
 }
 
 enum Term {
@@ -190,6 +197,19 @@ impl Expression {
 }
 
 impl StatementNode {
+    fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
+        Ok(match tokens.next()? {
+            Token::Return => StatementNode::parse_return(tokens)?,
+            Token::Declaration => StatementNode::parse_declaration(tokens)?,
+            Token::If => StatementNode::parse_if(tokens)?,
+            Token::OpenCurly => StatementNode::StartScope,
+            Token::ClosedCurly => StatementNode::EndScope,
+            _ => {
+                return Err(CompilationError::new("Unexpected token"));
+            }
+        })
+    }
+
     fn parse_return(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let expr = Expression::parse(tokens, 0)?;
         match tokens.next()? {
@@ -221,6 +241,44 @@ impl StatementNode {
         }
     }
 
+    fn parse_if(tokens: &mut Tokens) -> Result<Self, CompilationError> {
+        let expr = Expression::parse(tokens, 0)?;
+        match tokens.next()? {
+            Token::OpenCurly => {
+                let mut statements: Vec<StatementNode> = Vec::new();
+                let mut inner_start_scopes = 0;
+
+                loop {
+                    let stmt = match tokens.next()? {
+                        Token::Return => StatementNode::parse_return(tokens)?,
+                        Token::Declaration => StatementNode::parse_declaration(tokens)?,
+                        Token::If => StatementNode::parse_if(tokens)?,
+                        Token::OpenCurly => {
+                            inner_start_scopes += 1;
+                            StatementNode::StartScope
+                        }
+                        Token::ClosedCurly => {
+                            inner_start_scopes -= 1;
+                            if inner_start_scopes <= 0 {
+                                break;
+                            }
+                            StatementNode::EndScope
+                        }
+                        _ => {
+                            return Err(CompilationError::new("Unexpected token"));
+                        }
+                    };
+
+                    statements.push(stmt);
+                }
+
+                statements.push(StatementNode::EndScope);
+                Ok(StatementNode::If { expr, statements })
+            }
+            _ => Err(CompilationError::new("expected {")),
+        }
+    }
+
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
         match self {
             StatementNode::Declaration { literal, expr } => {
@@ -245,6 +303,17 @@ impl StatementNode {
             StatementNode::EndScope => {
                 parsing_context.pop_scope();
             }
+            StatementNode::If { expr, statements } => {
+                expr.to_asm(parsing_context)?;
+                let label = parsing_context.new_label();
+                parsing_context.pop_from_stack("rdi");
+                parsing_context.push_line("    cmp rdi, 0");
+                parsing_context.push_line(format!("    je {label}").as_str());
+                for stmt in statements {
+                    stmt.to_asm(parsing_context)?;
+                }
+                parsing_context.push_line(format!("{label}:").as_str());
+            }
             _ => {
                 return Err(CompilationError::new("statement not implemented yet"));
             }
@@ -254,23 +323,10 @@ impl StatementNode {
 }
 
 impl ProgramNode {
-    pub fn parse(
-        tokens: &mut Tokens,
-        parsing_context: &mut ParsingContext,
-    ) -> Result<Self, CompilationError> {
+    pub fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
 
-        while let Ok(token) = tokens.next() {
-            let stmt = match token {
-                Token::Return => StatementNode::parse_return(tokens)?,
-                Token::Declaration => StatementNode::parse_declaration(tokens)?,
-                Token::OpenCurly => StatementNode::StartScope,
-                Token::ClosedCurly => StatementNode::EndScope,
-                _ => {
-                    return Err(CompilationError::new("Unexpected token"));
-                }
-            };
-
+        while let Ok(stmt) = StatementNode::parse(tokens) {
             statements.push(stmt);
         }
 

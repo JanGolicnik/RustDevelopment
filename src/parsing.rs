@@ -18,6 +18,7 @@ pub struct ParsingContext {
     scopes: Vec<Scope>,
     pub output: String,
     current_scope: usize,
+    label_counter: usize,
 }
 
 impl Clone for Variable {
@@ -123,6 +124,11 @@ impl ParsingContext {
             self.current_scope = scope.parent;
         }
     }
+
+    pub fn new_label(&mut self) -> String {
+        self.label_counter += 1;
+        format!("LABEL{}", self.label_counter)
+    }
 }
 
 pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
@@ -131,11 +137,12 @@ pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
         output: String::new(),
         scopes: Vec::new(),
         current_scope: usize::MAX,
+        label_counter: 0,
     };
 
     parsing_context.push_scope();
 
-    let root = ProgramNode::parse(tokens, &mut parsing_context)?;
+    let root = ProgramNode::parse(tokens)?;
 
     root.to_asm(&mut parsing_context)?;
 
