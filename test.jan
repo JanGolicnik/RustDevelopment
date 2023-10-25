@@ -1,2 +1,10 @@
 let x = 1;
+
+if x = 1{
+    let y = 1 + 2 + 3 + 4;
+    if y > x {
+        return y;
+    }
+}
+
 return x;
