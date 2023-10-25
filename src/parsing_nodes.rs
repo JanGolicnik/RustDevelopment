@@ -31,19 +31,8 @@ enum Term {
 
 enum Expression {
     Term(Term),
-    Addition {
-        left: Box<Expression>,
-        right: Box<Expression>,
-    },
-    Multiplication {
-        left: Box<Expression>,
-        right: Box<Expression>,
-    },
-    Subtraction {
-        left: Box<Expression>,
-        right: Box<Expression>,
-    },
-    Division {
+    Binary {
+        operator: Token,
         left: Box<Expression>,
         right: Box<Expression>,
     },
@@ -68,15 +57,12 @@ impl Term {
         match self {
             Term::Int(val) => {
                 parsing_context.push_line(format!("    mov rdi, {}", val).as_str());
-                parsing_context.push_on_stack("rdi");
                 Ok(())
             }
             Term::Identifier(name) => {
-                println!("AAAAAAAAAAA");
                 if let Some(var) = parsing_context.get_var(name) {
                     parsing_context
                         .push_line(format!("    mov rdi, [rbp - {}]", var.stack_position).as_str());
-                    parsing_context.push_on_stack("rdi");
                     Ok(())
                 } else {
                     Err(CompilationError::new(
@@ -119,33 +105,26 @@ impl Expression {
                 tokens.next()?;
                 let right_expression = Expression::parse(tokens, next_min_precedence)?;
 
-                match token {
-                    Token::Plus => {
-                        expr = Expression::Addition {
-                            left: Box::new(expr),
-                            right: Box::new(right_expression),
-                        }
-                    }
-                    Token::Star => {
-                        expr = Expression::Multiplication {
-                            left: Box::new(expr),
-                            right: Box::new(right_expression),
-                        }
-                    }
-                    Token::Slash => {
-                        expr = Expression::Division {
-                            left: Box::new(expr),
-                            right: Box::new(right_expression),
-                        }
-                    }
-                    Token::Minus => {
-                        expr = Expression::Subtraction {
-                            left: Box::new(expr),
-                            right: Box::new(right_expression),
-                        }
-                    }
-                    _ => return Err(CompilationError::new("invalid operator")),
+                if !matches!(
+                    token,
+                    Token::Plus
+                        | Token::Star
+                        | Token::Slash
+                        | Token::Minus
+                        | Token::LessThan
+                        | Token::GreaterThan
+                        | Token::Equals
+                ) {
+                    return Err(CompilationError::new("invalid expression operator"));
                 }
+
+                println!("CREATED EXPRESSION WITH TOKEN {:?}", token);
+
+                expr = Expression::Binary {
+                    operator: token,
+                    left: Box::new(expr),
+                    right: Box::new(right_expression),
+                };
             } else {
                 break;
             }
@@ -159,40 +138,80 @@ impl Expression {
                 term.to_asm(parsing_context)?;
                 Ok(())
             }
-            Expression::Addition { left, right } => {
+            Expression::Binary {
+                operator,
+                left,
+                right,
+            } => {
                 left.to_asm(parsing_context)?;
-                right.to_asm(parsing_context)?;
-                parsing_context.pop_from_stack("rdi");
-                parsing_context.pop_from_stack("rax");
-                parsing_context.push_line("    add rdi, rax");
                 parsing_context.push_on_stack("rdi");
-                Ok(())
-            }
-            Expression::Multiplication { left, right } => {
-                left.to_asm(parsing_context)?;
                 right.to_asm(parsing_context)?;
-                parsing_context.pop_from_stack("rdi");
                 parsing_context.pop_from_stack("rax");
-                parsing_context.push_line("    mul rdi");
-                parsing_context.push_on_stack("rax");
-                Ok(())
-            }
-            Expression::Subtraction { left, right } => {
-                left.to_asm(parsing_context)?;
-                right.to_asm(parsing_context)?;
-                parsing_context.pop_from_stack("rdi");
-                parsing_context.pop_from_stack("rax");
-                parsing_context.push_line("    sub rax, rdi");
-                parsing_context.push_on_stack("rax");
-                Ok(())
-            }
-            Expression::Division { left, right } => {
-                left.to_asm(parsing_context)?;
-                right.to_asm(parsing_context)?;
-                parsing_context.pop_from_stack("rdi");
-                parsing_context.pop_from_stack("rax");
-                parsing_context.push_line("    div rdi");
-                parsing_context.push_on_stack("rax");
+
+                match operator {
+                    Token::Plus => {
+                        parsing_context.push_line("    add rax, rdi ");
+                        parsing_context.push_line("    mov rdi, rax");
+                    }
+                    Token::Minus => {
+                        parsing_context.push_line("    sub rax, rdi");
+                        parsing_context.push_line("    mov rdi, rax");
+                    }
+                    Token::Slash => {
+                        parsing_context.push_line("    div rdi");
+                        parsing_context.push_line("    mov rdi, rax");
+                    }
+                    Token::Star => {
+                        parsing_context.push_line("    mul rdi");
+                        parsing_context.push_line("    mov rdi, rax");
+                    }
+                    Token::LessThan => {
+                        let true_label = parsing_context.new_label();
+                        let false_label = parsing_context.new_label();
+                        let label = parsing_context.new_label();
+                        parsing_context.push_line("    cmp rax, rdi");
+                        parsing_context.push_line(format!("    jl {true_label}").as_str());
+                        parsing_context.push_line(format!("{false_label}:").as_str());
+                        parsing_context.push_line("    mov rdi, 0");
+
+                        parsing_context.push_line(format!("    jmp {label}").as_str());
+                        parsing_context.push_line(format!("{true_label}:").as_str());
+                        parsing_context.push_line("    mov rdi, 1");
+
+                        parsing_context.push_line(format!("{label}:").as_str());
+                    }
+                    Token::GreaterThan => {
+                        let true_label = parsing_context.new_label();
+                        let false_label = parsing_context.new_label();
+                        let label = parsing_context.new_label();
+                        parsing_context.push_line("    cmp rax, rdi");
+                        parsing_context.push_line(format!("    jg {true_label}").as_str());
+                        parsing_context.push_line(format!("{false_label}:").as_str());
+                        parsing_context.push_line("    mov rdi, 0");
+                        parsing_context.push_line(format!("    jmp {label}").as_str());
+                        parsing_context.push_line(format!("{true_label}:").as_str());
+                        parsing_context.push_line("    mov rdi, 1");
+                        parsing_context.push_line(format!("{label}:").as_str());
+                    }
+                    Token::Equals => {
+                        let true_label = parsing_context.new_label();
+                        let false_label = parsing_context.new_label();
+                        let label = parsing_context.new_label();
+                        parsing_context.push_line("    cmp rax, rdi");
+                        parsing_context.push_line(format!("    je {true_label}").as_str());
+                        parsing_context.push_line(format!("{false_label}:").as_str());
+                        parsing_context.push_line("    mov rdi, 0");
+                        parsing_context.push_line(format!("    jmp {label}").as_str());
+                        parsing_context.push_line(format!("{true_label}:").as_str());
+                        parsing_context.push_line("    mov rdi, 1");
+                        parsing_context.push_line(format!("{label}:").as_str());
+                    }
+                    _ => {
+                        return Err(CompilationError::new(
+                            "invalid binary operator (how did you get here?)",
+                        ));
+                    }
+                }
                 Ok(())
             }
         }
@@ -286,8 +305,8 @@ impl StatementNode {
             StatementNode::Declaration { literal, expr } => {
                 expr.to_asm(parsing_context)?;
                 let name = literal.clone();
-                if parsing_context.add_var(name) {
-                } else {
+                parsing_context.push_on_stack("rdi");
+                if parsing_context.add_var(name).is_none() {
                     return Err(CompilationError::new(
                         format!("Variable {literal} already exists").as_str(),
                     ));
@@ -296,7 +315,6 @@ impl StatementNode {
             StatementNode::Return { expr } => {
                 expr.to_asm(parsing_context)?;
                 parsing_context.push_line("    mov rax, 60");
-                parsing_context.pop_from_stack("rdi");
                 parsing_context.push_line("    syscall");
             }
             StatementNode::StartScope => {
@@ -306,9 +324,8 @@ impl StatementNode {
                 parsing_context.pop_scope();
             }
             StatementNode::If { expr, statements } => {
-                expr.to_asm(parsing_context)?;
                 let label = parsing_context.new_label();
-                parsing_context.pop_from_stack("rdi");
+                expr.to_asm(parsing_context)?;
                 parsing_context.push_line("    cmp rdi, 0");
                 parsing_context.push_line(format!("    je {label}").as_str());
                 for stmt in statements {
@@ -328,7 +345,8 @@ impl ProgramNode {
     pub fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
 
-        while let Ok(stmt) = StatementNode::parse(tokens) {
+        while tokens.peek(1).is_ok() {
+            let stmt = StatementNode::parse(tokens)?;
             statements.push(stmt);
         }
 

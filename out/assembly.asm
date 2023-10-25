@@ -2,27 +2,19 @@ global _start:
 _start:
     push rbp
     mov rbp, rsp
-    mov rdi, 1
+    mov rdi, 2
     push rdi
-    mov rdi, [rbp - 8]
-    push rdi
-    pop rdi
-    cmp rdi, 0
-    je LABEL1
-    mov rdi, [rbp - 8]
-    push rdi
-    mov rdi, 123
-    push rdi
-    pop rdi
+    mov rdi, 2
     pop rax
-    add rdi, rax
-    push rdi
-    mov rax, 60
-    pop rdi
-    syscall
+    cmp rax, rdi
+    je LABEL1
+LABEL2:
+    mov rdi, 0
+    jmp LABEL3
 LABEL1:
-    mov rdi, [rbp - 8]
+    mov rdi, 1
+LABEL3:
     push rdi
+    mov rdi, [rbp - 8]
     mov rax, 60
-    pop rdi
     syscall

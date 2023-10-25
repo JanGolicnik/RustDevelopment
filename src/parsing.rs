@@ -78,7 +78,6 @@ impl ParsingContext {
 
     pub fn get_var(&mut self, name: &String) -> Option<Variable> {
         let mut current_scope_index = self.current_scope;
-        println!("{current_scope_index} {}", self.scopes.len());
 
         while let Some(scope) = self.scopes.get_mut(current_scope_index) {
             if let Some(var) = scope.variables.get(name) {
@@ -90,7 +89,7 @@ impl ParsingContext {
         None
     }
 
-    pub fn add_var(&mut self, name: String) -> bool {
+    pub fn add_var(&mut self, name: String) -> Option<usize> {
         // let mut current_scope_index = self.current_scope;
         // while let Some(scope) = self.scopes.get_mut(current_scope_index) {
         //     if scope.variables.get(&name).is_some() {
@@ -100,20 +99,26 @@ impl ParsingContext {
         //     }
         // }
         if let Some(scope) = self.scopes.get_mut(self.current_scope) {
-            scope.variables.insert(
-                name,
-                Variable {
-                    stack_position: self.stack_size,
-                },
-            );
-            true
+            if scope
+                .variables
+                .insert(
+                    name,
+                    Variable {
+                        stack_position: self.stack_size,
+                    },
+                )
+                .is_some()
+            {
+                None
+            } else {
+                Some(self.stack_size)
+            }
         } else {
-            false
+            None
         }
     }
 
     pub fn push_scope(&mut self) {
-        println!("pushed scope");
         self.scopes.push(Scope {
             variables: HashMap::new(),
             parent: self.current_scope,
@@ -122,7 +127,6 @@ impl ParsingContext {
     }
 
     pub fn pop_scope(&mut self) {
-        println!("popped scope");
         if let Some(scope) = self.scopes.pop() {
             self.current_scope = scope.parent;
         }

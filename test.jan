@@ -1,5 +1,2 @@
-let jan_is_a_beast = true;
-if jan_is_a_beast {
-    return jan_is_a_beast + 123;
-}
-return jan_is_a_beast;
+let x = 1;
+return x;

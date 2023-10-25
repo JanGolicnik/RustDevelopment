@@ -19,6 +19,8 @@ pub enum Token {
     OpenCurly,
     ClosedCurly,
     If,
+    LessThan,
+    GreaterThan,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -41,6 +43,8 @@ impl Clone for Token {
             Token::OpenCurly => Token::OpenCurly,
             Token::ClosedCurly => Token::ClosedCurly,
             Token::If => Token::If,
+            Token::LessThan => Token::LessThan,
+            Token::GreaterThan => Token::GreaterThan,
         }
     }
 }
@@ -48,10 +52,11 @@ impl Clone for Token {
 impl Token {
     pub fn get_operator_info(&self) -> Option<OperatorInfo> {
         match self {
-            Token::Plus => Some(OperatorInfo(0, true)),
-            Token::Minus => Some(OperatorInfo(0, false)),
-            Token::Star => Some(OperatorInfo(1, true)),
-            Token::Slash => Some(OperatorInfo(1, false)),
+            Token::GreaterThan | Token::LessThan | Token::Equals => Some(OperatorInfo(0, true)),
+            Token::Plus => Some(OperatorInfo(1, true)),
+            Token::Minus => Some(OperatorInfo(1, false)),
+            Token::Star => Some(OperatorInfo(2, true)),
+            Token::Slash => Some(OperatorInfo(2, false)),
             _ => None,
         }
     }
@@ -162,7 +167,7 @@ fn str_to_token(chars: &str) -> Option<Token> {
 fn is_separator(grapheme: &str) -> bool {
     matches!(
         grapheme,
-        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")" | "{" | "}"
+        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")" | "{" | "}" | "<" | ">"
     )
 }
 
@@ -179,6 +184,8 @@ fn tokenize_separator(grapheme: &str) -> Option<Token> {
         ")" => Some(Token::ClosedBracket),
         "{" => Some(Token::OpenCurly),
         "}" => Some(Token::ClosedCurly),
+        "<" => Some(Token::LessThan),
+        ">" => Some(Token::GreaterThan),
         _ => None,
     }
 }
