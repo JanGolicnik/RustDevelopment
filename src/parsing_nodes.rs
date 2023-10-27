@@ -31,6 +31,7 @@ enum StatementNode {
         literal: String,
         expr: Expression,
     },
+    Break,
 }
 
 enum Term {
@@ -234,6 +235,12 @@ impl StatementNode {
             Token::If => StatementNode::parse_if(tokens)?,
             Token::OpenCurly => StatementNode::parse_scope(tokens)?,
             Token::While => StatementNode::parse_while(tokens)?,
+            Token::Break => match tokens.next()? {
+                Token::EndStatement => StatementNode::Break,
+                _ => {
+                    return Err(CompilationError::new("Expected ;"));
+                }
+            },
             Token::Identifier(name) => {
                 let var_name = name.clone();
                 StatementNode::parse_assignment(tokens, var_name)?
@@ -377,6 +384,9 @@ impl StatementNode {
             StatementNode::While { expr, scope } => {
                 let true_label = parsing_context.new_label();
                 let false_label = parsing_context.new_label();
+
+                parsing_context.loop_exit_labels.push(false_label.clone());
+
                 parsing_context.push_line(format!("{true_label}:").as_str());
                 expr.to_asm(parsing_context)?;
                 parsing_context.push_line("    cmp rdi, 0");
@@ -384,6 +394,8 @@ impl StatementNode {
                 scope.to_asm(parsing_context)?;
                 parsing_context.push_line(format!("    jmp {true_label}").as_str());
                 parsing_context.push_line(format!("{false_label}:").as_str());
+
+                parsing_context.loop_exit_labels.pop();
             }
             StatementNode::Assignment { literal, expr } => {
                 expr.to_asm(parsing_context)?;
@@ -395,6 +407,13 @@ impl StatementNode {
                     return Err(CompilationError::new(
                         format!("Variable {literal} doesnt exist").as_str(),
                     ));
+                }
+            }
+            StatementNode::Break => {
+                if let Some(label) = parsing_context.loop_exit_labels.last() {
+                    parsing_context.push_line(format!("    jmp {}", label).as_str())
+                } else {
+                    return Err(CompilationError::new("break without label"));
                 }
             }
             _ => {

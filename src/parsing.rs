@@ -19,6 +19,7 @@ pub struct ParsingContext {
     pub output: String,
     current_scope: usize,
     label_counter: usize,
+    pub loop_exit_labels: Vec<String>,
 }
 
 impl Clone for Variable {
@@ -145,6 +146,7 @@ pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
         scopes: Vec::new(),
         current_scope: usize::MAX,
         label_counter: 0,
+        loop_exit_labels: Vec::new(),
     };
 
     parsing_context.push_scope();
