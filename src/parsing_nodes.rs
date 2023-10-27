@@ -32,6 +32,9 @@ enum StatementNode {
         expr: Expression,
     },
     Break,
+    Print {
+        expr: Expression,
+    },
 }
 
 enum Term {
@@ -241,6 +244,15 @@ impl StatementNode {
                     return Err(CompilationError::new("Expected ;"));
                 }
             },
+            Token::Print => {
+                let expr = Expression::parse(tokens, 0)?;
+                match tokens.next()? {
+                    Token::EndStatement => StatementNode::Print { expr },
+                    _ => {
+                        return Err(CompilationError::new("Expected ;"));
+                    }
+                }
+            }
             Token::Identifier(name) => {
                 let var_name = name.clone();
                 StatementNode::parse_assignment(tokens, var_name)?
@@ -416,6 +428,16 @@ impl StatementNode {
                     return Err(CompilationError::new("break without label"));
                 }
             }
+            StatementNode::Print { expr } => {
+                expr.to_asm(parsing_context)?;
+                parsing_context.push_line("    mov al, dil");
+                parsing_context.push_line("    mov byte [char_buffer], al");
+                parsing_context.push_line("    mov rax, 1");
+                parsing_context.push_line("    mov rsi, char_buffer");
+                parsing_context.push_line("    mov rdi, 1");
+                parsing_context.push_line("    mov rdx, 1");
+                parsing_context.push_line("    syscall");
+            }
             _ => {
                 return Err(CompilationError::new("statement not implemented yet"));
             }
@@ -437,6 +459,10 @@ impl ProgramNode {
     }
 
     pub fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
+        parsing_context.push_line("section .bss");
+        parsing_context.push_line("    char_buffer resb 4");
+
+        parsing_context.push_line("section .text");
         parsing_context.push_line("global _start:");
         parsing_context.push_line("_start:");
         parsing_context.push_line("    push rbp");
@@ -445,6 +471,7 @@ impl ProgramNode {
         for stmt in &self.statements {
             stmt.to_asm(parsing_context)?;
         }
+
         Ok(())
     }
 }

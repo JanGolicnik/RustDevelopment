@@ -1,8 +1,6 @@
-let x = 1;
-while x < 10 {
-    if x > 5 {
-        break;
-    }
+let x = 0;
+while x < 127 {
+    print x;
     x = x + 1;
 }
-return x;
+return 3;

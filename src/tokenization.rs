@@ -23,6 +23,7 @@ pub enum Token {
     GreaterThan,
     While,
     Break,
+    Print,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -49,6 +50,7 @@ impl Clone for Token {
             Token::GreaterThan => Token::GreaterThan,
             Token::While => Token::While,
             Token::Break => Token::Break,
+            Token::Print => Token::Print,
         }
     }
 }
@@ -159,6 +161,7 @@ fn tokenize_word(word: &String) -> Option<Token> {
         "false" => Some(Token::Int(0)),
         "while" => Some(Token::While),
         "break" => Some(Token::Break),
+        "print" => Some(Token::Print),
         _ => str_to_token(word),
     }
 }
