@@ -16,11 +16,12 @@ enum StatementNode {
     Return {
         expr: Expression,
     },
-    StartScope,
-    EndScope,
+    Scope {
+        statements: Vec<StatementNode>,
+    },
     If {
         expr: Expression,
-        statements: Vec<StatementNode>,
+        scope: Box<StatementNode>,
     },
 }
 
@@ -224,8 +225,7 @@ impl StatementNode {
             Token::Return => StatementNode::parse_return(tokens)?,
             Token::Declaration => StatementNode::parse_declaration(tokens)?,
             Token::If => StatementNode::parse_if(tokens)?,
-            Token::OpenCurly => StatementNode::StartScope,
-            Token::ClosedCurly => StatementNode::EndScope,
+            Token::OpenCurly => StatementNode::parse_scope(tokens)?,
             _ => {
                 return Err(CompilationError::new("Unexpected token"));
             }
@@ -267,37 +267,30 @@ impl StatementNode {
         let expr = Expression::parse(tokens, 0)?;
         match tokens.next()? {
             Token::OpenCurly => {
-                let mut statements: Vec<StatementNode> = Vec::new();
-                let mut inner_start_scopes = 0;
-
-                loop {
-                    let stmt = match tokens.next()? {
-                        Token::Return => StatementNode::parse_return(tokens)?,
-                        Token::Declaration => StatementNode::parse_declaration(tokens)?,
-                        Token::If => StatementNode::parse_if(tokens)?,
-                        Token::OpenCurly => {
-                            inner_start_scopes += 1;
-                            StatementNode::StartScope
-                        }
-                        Token::ClosedCurly => {
-                            inner_start_scopes -= 1;
-                            if inner_start_scopes <= 0 {
-                                break;
-                            }
-                            StatementNode::EndScope
-                        }
-                        _ => {
-                            return Err(CompilationError::new("Unexpected token"));
-                        }
-                    };
-
-                    statements.push(stmt);
-                }
-
-                Ok(StatementNode::If { expr, statements })
+                let scope = StatementNode::parse_scope(tokens)?;
+                Ok(StatementNode::If {
+                    expr,
+                    scope: Box::new(scope),
+                })
             }
-            _ => Err(CompilationError::new("expected {")),
+            _ => Err(CompilationError::new("expected scope")),
         }
+    }
+
+    fn parse_scope(tokens: &mut Tokens) -> Result<Self, CompilationError> {
+        let mut statements: Vec<StatementNode> = Vec::new();
+        while match tokens.peek(0)? {
+            Token::ClosedCurly => {
+                tokens.next()?;
+                return Ok(StatementNode::Scope { statements });
+            }
+            _ => {
+                let stmt = StatementNode::parse(tokens)?;
+                statements.push(stmt);
+                true
+            }
+        } {}
+        Err(CompilationError::new("unclosed scope"))
     }
 
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
@@ -317,20 +310,19 @@ impl StatementNode {
                 parsing_context.push_line("    mov rax, 60");
                 parsing_context.push_line("    syscall");
             }
-            StatementNode::StartScope => {
+            StatementNode::Scope { statements } => {
                 parsing_context.push_scope();
-            }
-            StatementNode::EndScope => {
+                for stmt in statements {
+                    stmt.to_asm(parsing_context)?;
+                }
                 parsing_context.pop_scope();
             }
-            StatementNode::If { expr, statements } => {
+            StatementNode::If { expr, scope } => {
                 let label = parsing_context.new_label();
                 expr.to_asm(parsing_context)?;
                 parsing_context.push_line("    cmp rdi, 0");
                 parsing_context.push_line(format!("    je {label}").as_str());
-                for stmt in statements {
-                    stmt.to_asm(parsing_context)?;
-                }
+                scope.to_asm(parsing_context)?;
                 parsing_context.push_line(format!("{label}:").as_str());
             }
             _ => {

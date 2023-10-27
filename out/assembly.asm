@@ -6,7 +6,7 @@ _start:
     push rdi
     mov rdi, [rbp - 8]
     push rdi
-    mov rdi, 1
+    mov rdi, 2
     pop rax
     cmp rax, rdi
     je LABEL2
