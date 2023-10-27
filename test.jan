@@ -1,10 +1,5 @@
 let x = 1;
-
-if x = 2{
-    let y = 1 + 2 + 3 + 4;
-    if y > x {
-        return y;
-    }
+while x < 10 {
+    x = x + 1;
 }
-
 return x;

@@ -23,6 +23,14 @@ enum StatementNode {
         expr: Expression,
         scope: Box<StatementNode>,
     },
+    While {
+        expr: Expression,
+        scope: Box<StatementNode>,
+    },
+    Assignment {
+        literal: String,
+        expr: Expression,
+    },
 }
 
 enum Term {
@@ -77,6 +85,7 @@ impl Term {
 
 impl Expression {
     fn parse(tokens: &mut Tokens, min_precedence: usize) -> Result<Self, CompilationError> {
+        println!("expression {:?}", tokens.peek(0));
         let mut expr = match tokens.peek(0)? {
             Token::OpenBracket => {
                 tokens.next()?;
@@ -118,8 +127,6 @@ impl Expression {
                 ) {
                     return Err(CompilationError::new("invalid expression operator"));
                 }
-
-                println!("CREATED EXPRESSION WITH TOKEN {:?}", token);
 
                 expr = Expression::Binary {
                     operator: token,
@@ -226,8 +233,15 @@ impl StatementNode {
             Token::Declaration => StatementNode::parse_declaration(tokens)?,
             Token::If => StatementNode::parse_if(tokens)?,
             Token::OpenCurly => StatementNode::parse_scope(tokens)?,
+            Token::While => StatementNode::parse_while(tokens)?,
+            Token::Identifier(name) => {
+                let var_name = name.clone();
+                StatementNode::parse_assignment(tokens, var_name)?
+            }
             _ => {
-                return Err(CompilationError::new("Unexpected token"));
+                return Err(CompilationError::new(
+                    format!("Unexpected token {:?}", tokens.peek(0)?).as_str(),
+                ));
             }
         })
     }
@@ -279,18 +293,53 @@ impl StatementNode {
 
     fn parse_scope(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
+        println!("parsing scope2 {:?}", tokens.peek(0)?);
         while match tokens.peek(0)? {
             Token::ClosedCurly => {
                 tokens.next()?;
                 return Ok(StatementNode::Scope { statements });
             }
             _ => {
+                println!("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCcccc");
                 let stmt = StatementNode::parse(tokens)?;
                 statements.push(stmt);
                 true
             }
         } {}
         Err(CompilationError::new("unclosed scope"))
+    }
+
+    fn parse_while(tokens: &mut Tokens) -> Result<Self, CompilationError> {
+        println!("parsing while");
+        println!("parsing expr");
+        let expr = Expression::parse(tokens, 0)?;
+        println!("parsing scope {:?}", tokens.peek(0)?);
+        match tokens.next()? {
+            Token::OpenCurly => {
+                let scope = StatementNode::parse_scope(tokens)?;
+                Ok(StatementNode::While {
+                    expr,
+                    scope: Box::new(scope),
+                })
+            }
+            _ => Err(CompilationError::new("expected scope")),
+        }
+    }
+
+    fn parse_assignment(tokens: &mut Tokens, var_name: String) -> Result<Self, CompilationError> {
+        match tokens.next()? {
+            Token::Equals => {
+                let expr = Expression::parse(tokens, 0)?;
+                match tokens.next()? {
+                    Token::EndStatement => Ok(StatementNode::Assignment {
+                        literal: var_name,
+                        expr,
+                    }),
+                    _ => Err(CompilationError::new("expected end statement")),
+                }
+            }
+            _ => Err(CompilationError::new("expected equals ")),
+        }
     }
 
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
@@ -324,6 +373,29 @@ impl StatementNode {
                 parsing_context.push_line(format!("    je {label}").as_str());
                 scope.to_asm(parsing_context)?;
                 parsing_context.push_line(format!("{label}:").as_str());
+            }
+            StatementNode::While { expr, scope } => {
+                let true_label = parsing_context.new_label();
+                let false_label = parsing_context.new_label();
+                parsing_context.push_line(format!("{true_label}:").as_str());
+                expr.to_asm(parsing_context)?;
+                parsing_context.push_line("    cmp rdi, 0");
+                parsing_context.push_line(format!("    je {false_label}").as_str());
+                scope.to_asm(parsing_context)?;
+                parsing_context.push_line(format!("    jmp {true_label}").as_str());
+                parsing_context.push_line(format!("{false_label}:").as_str());
+            }
+            StatementNode::Assignment { literal, expr } => {
+                expr.to_asm(parsing_context)?;
+                let name = literal.clone();
+                if let Some(var) = parsing_context.get_var(&name) {
+                    parsing_context
+                        .push_line(format!("    mov [rbp - {}], rdi", var.stack_position).as_str())
+                } else {
+                    return Err(CompilationError::new(
+                        format!("Variable {literal} doesnt exist").as_str(),
+                    ));
+                }
             }
             _ => {
                 return Err(CompilationError::new("statement not implemented yet"));

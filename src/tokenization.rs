@@ -21,6 +21,7 @@ pub enum Token {
     If,
     LessThan,
     GreaterThan,
+    While,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -45,6 +46,7 @@ impl Clone for Token {
             Token::If => Token::If,
             Token::LessThan => Token::LessThan,
             Token::GreaterThan => Token::GreaterThan,
+            Token::While => Token::While,
         }
     }
 }
@@ -153,6 +155,7 @@ fn tokenize_word(word: &String) -> Option<Token> {
         "if" => Some(Token::If),
         "true" => Some(Token::Int(1)),
         "false" => Some(Token::Int(0)),
+        "while" => Some(Token::While),
         _ => str_to_token(word),
     }
 }
