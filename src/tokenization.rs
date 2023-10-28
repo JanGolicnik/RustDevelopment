@@ -24,6 +24,7 @@ pub enum Token {
     While,
     Break,
     Print,
+    String(String),
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -51,6 +52,7 @@ impl Clone for Token {
             Token::While => Token::While,
             Token::Break => Token::Break,
             Token::Print => Token::Print,
+            Token::String(val) => Token::String(val.clone()),
         }
     }
 }
@@ -114,17 +116,16 @@ pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
     let mut last_token_index = 0;
 
     let file_len = file.graphemes(true).count();
-
-    for (index, grapheme) in file.graphemes(true).enumerate() {
-        println!("{} {}", index, grapheme);
+    let graphemes: Vec<&str> = file.graphemes(true).collect();
+    let mut index = 0;
+    while let Some(grapheme) = graphemes.get(index) {
         if index + 1 == file_len || is_separator(grapheme) {
-            let graphemes: Vec<&str> = file
+            let word: String = file
                 .graphemes(true)
                 .skip(last_token_index)
                 .take(index - last_token_index)
-                .collect();
+                .collect::<String>();
 
-            let word: String = graphemes.join("");
             if !word.is_empty() {
                 if let Some(word_token) = tokenize_word(&word) {
                     tokens.push(word_token);
@@ -139,21 +140,22 @@ pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
                 }
             }
 
-            if let Some(separator_token) = tokenize_separator(grapheme) {
+            if let Some(separator_token) = tokenize_separator(grapheme, &graphemes[..], &mut index)?
+            {
                 tokens.push(separator_token);
             }
 
             last_token_index = index + 1;
         }
+
+        index += 1;
     }
 
     Ok(Tokens::new(tokens))
 }
 
-fn tokenize_word(word: &String) -> Option<Token> {
-    let chars = word.as_str();
-    println!("{}", word);
-    match chars {
+fn tokenize_word(word: &str) -> Option<Token> {
+    match word {
         "return" => Some(Token::Return),
         "let" => Some(Token::Declaration),
         "if" => Some(Token::If),
@@ -176,13 +178,16 @@ fn str_to_token(chars: &str) -> Option<Token> {
 fn is_separator(grapheme: &str) -> bool {
     matches!(
         grapheme,
-        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")" | "{" | "}" | "<" | ">"
+        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")" | "{" | "}" | "<" | ">" | "\""
     )
 }
 
-fn tokenize_separator(grapheme: &str) -> Option<Token> {
-    println!("{}", grapheme);
-    match grapheme {
+fn tokenize_separator(
+    grapheme: &str,
+    graphemes: &[&str],
+    index: &mut usize,
+) -> Result<Option<Token>, CompilationError> {
+    Ok(match grapheme {
         ";" => Some(Token::EndStatement),
         "=" => Some(Token::Equals),
         "+" => Some(Token::Plus),
@@ -195,6 +200,26 @@ fn tokenize_separator(grapheme: &str) -> Option<Token> {
         "}" => Some(Token::ClosedCurly),
         "<" => Some(Token::LessThan),
         ">" => Some(Token::GreaterThan),
-        _ => None,
-    }
+        "\"" => {
+            println!("AAAAAA");
+            let mut chars: Vec<&str> = Vec::new();
+            *index += 1;
+            println!("{:?}", graphemes);
+            println!("{:?}", graphemes.get(*index));
+            while let Some(gr) = graphemes.get(*index) {
+                println!("{gr}");
+                if *gr == "\"" {
+                    let string = chars.iter().map(|s| s.to_string()).collect::<String>();
+                    return Ok(Some(Token::String(string)));
+                }
+                chars.push(*gr);
+                *index += 1;
+            }
+
+            return Err(CompilationError::new("unmatched \""));
+        }
+        _ => {
+            return Ok(None);
+        }
+    })
 }

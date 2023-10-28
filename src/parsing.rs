@@ -8,6 +8,11 @@ pub struct Variable {
     pub stack_position: usize,
 }
 
+pub struct GlobalString {
+    pub string: String,
+    pub label: String,
+}
+
 pub struct Scope {
     variables: HashMap<String, Variable>,
     parent: usize,
@@ -20,6 +25,8 @@ pub struct ParsingContext {
     current_scope: usize,
     label_counter: usize,
     pub loop_exit_labels: Vec<String>,
+    pub strings: Vec<GlobalString>,
+    string_counter: usize,
 }
 
 impl Clone for Variable {
@@ -137,6 +144,20 @@ impl ParsingContext {
         self.label_counter += 1;
         format!("LABEL{}", self.label_counter)
     }
+
+    pub fn add_string(&mut self, val: &str) -> String {
+        let label = self.new_string_label();
+        self.strings.push(GlobalString {
+            string: val.to_string(),
+            label: label.clone(),
+        });
+        label
+    }
+
+    fn new_string_label(&mut self) -> String {
+        self.string_counter += 1;
+        format!("STRING{}", self.string_counter)
+    }
 }
 
 pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
@@ -147,6 +168,8 @@ pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
         current_scope: usize::MAX,
         label_counter: 0,
         loop_exit_labels: Vec::new(),
+        strings: Vec::new(),
+        string_counter: 0,
     };
 
     parsing_context.push_scope();

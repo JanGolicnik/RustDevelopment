@@ -8,6 +8,11 @@ pub struct ProgramNode {
     statements: Vec<StatementNode>,
 }
 
+enum PrintValue {
+    Expr(Expression),
+    String(String),
+}
+
 enum StatementNode {
     Declaration {
         literal: String,
@@ -33,15 +38,18 @@ enum StatementNode {
     },
     Break,
     Print {
-        expr: Expression,
+        val: PrintValue,
     },
 }
 
+#[derive(Debug)]
 enum Term {
     Int(i32),
     Identifier(String),
+    String(String),
 }
 
+#[derive(Debug)]
 enum Expression {
     Term(Term),
     Binary {
@@ -54,12 +62,14 @@ enum Expression {
 impl Term {
     fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let token = tokens.next()?;
+        println!("{:?}", token);
         match token {
             Token::Int(int_token_val) => Ok(Term::Int(*int_token_val)),
             Token::Identifier(name) => {
                 let name = name.clone();
                 Ok(Term::Identifier(name))
             }
+            Token::String(val) => Ok(Term::String(val.clone())),
             _ => Err(CompilationError::new(
                 format!("Weird term {:?}", token).as_str(),
             )),
@@ -82,6 +92,11 @@ impl Term {
                         format!("Undeclared variable {name}").as_str(),
                     ))
                 }
+            }
+            Term::String(val) => {
+                let label = parsing_context.add_string(val);
+                parsing_context.push_line(format!("    mov rdi, {}", label).as_str());
+                Ok(())
             }
         }
     }
@@ -245,9 +260,22 @@ impl StatementNode {
                 }
             },
             Token::Print => {
-                let expr = Expression::parse(tokens, 0)?;
+                let node = match tokens.peek(0)?.clone() {
+                    Token::String(val) => {
+                        tokens.next()?;
+                        StatementNode::Print {
+                            val: PrintValue::String(val.clone()),
+                        }
+                    }
+                    _ => {
+                        let expr = Expression::parse(tokens, 0)?;
+                        StatementNode::Print {
+                            val: PrintValue::Expr(expr),
+                        }
+                    }
+                };
                 match tokens.next()? {
-                    Token::EndStatement => StatementNode::Print { expr },
+                    Token::EndStatement => node,
                     _ => {
                         return Err(CompilationError::new("Expected ;"));
                     }
@@ -281,12 +309,16 @@ impl StatementNode {
                 match tokens.next()? {
                     Token::Equals => {
                         let expr = Expression::parse(tokens, 0)?;
+                        println!("expr: {:?}", expr);
+                        println!("tok: {:?}", tokens.peek(0)?);
                         match tokens.next()? {
                             Token::EndStatement => Ok(StatementNode::Declaration {
                                 literal: name,
                                 expr,
                             }),
-                            _ => Err(CompilationError::new("expected end statement")),
+                            _ => Err(CompilationError::new(
+                                "expected end statement for declaration",
+                            )),
                         }
                     }
                     _ => Err(CompilationError::new("expected equals ")),
@@ -428,16 +460,26 @@ impl StatementNode {
                     return Err(CompilationError::new("break without label"));
                 }
             }
-            StatementNode::Print { expr } => {
-                expr.to_asm(parsing_context)?;
-                parsing_context.push_line("    mov al, dil");
-                parsing_context.push_line("    mov byte [char_buffer], al");
-                parsing_context.push_line("    mov rax, 1");
-                parsing_context.push_line("    mov rsi, char_buffer");
-                parsing_context.push_line("    mov rdi, 1");
-                parsing_context.push_line("    mov rdx, 1");
-                parsing_context.push_line("    syscall");
-            }
+            StatementNode::Print { val } => match val {
+                PrintValue::Expr(expr) => {
+                    expr.to_asm(parsing_context)?;
+                    parsing_context.push_line("    mov al, dil");
+                    parsing_context.push_line("    mov byte [char_buffer], al");
+                    parsing_context.push_line("    mov rax, 1");
+                    parsing_context.push_line("    mov rsi, char_buffer");
+                    parsing_context.push_line("    mov rdi, 1");
+                    parsing_context.push_line("    mov rdx, 1");
+                    parsing_context.push_line("    syscall");
+                }
+                PrintValue::String(val) => {
+                    let label = parsing_context.add_string(val);
+                    parsing_context.push_line("    mov rax, 1");
+                    parsing_context.push_line("    mov rdi, 1");
+                    parsing_context.push_line(format!("    mov rsi, {}", label).as_str());
+                    parsing_context.push_line(format!("    mov rdx, {}", val.len()).as_str());
+                    parsing_context.push_line("    syscall");
+                }
+            },
             _ => {
                 return Err(CompilationError::new("statement not implemented yet"));
             }
@@ -470,6 +512,21 @@ impl ProgramNode {
 
         for stmt in &self.statements {
             stmt.to_asm(parsing_context)?;
+        }
+
+        parsing_context.push_line("section .data");
+        let lines: Vec<String> = parsing_context
+            .strings
+            .iter()
+            .map(|global_str| {
+                let label = global_str.label.clone();
+                let string = global_str.string.clone();
+                format!("{}:\n    db \"{}\", 10", label, string)
+            })
+            .collect();
+
+        for line in lines {
+            parsing_context.push_line(line.as_str());
         }
 
         Ok(())
