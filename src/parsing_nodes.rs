@@ -503,13 +503,19 @@ impl StatementNode {
                 parsing_context.push_line("    syscall");
             }
             StatementNode::Function { name, scope } => {
-                parsing_context.add_stack_pointer();
-                parsing_context.push_line(format!("{}:", name).as_str());
-                parsing_context.push_on_stack("rbp");
-                parsing_context.push_line("    mov rbp, rsp");
+                if parsing_context.add_function_name(name.clone()) {
+                    parsing_context.add_stack_pointer();
+                    parsing_context.push_line(format!("{}:", name).as_str());
+                    parsing_context.push_on_stack("rbp");
+                    parsing_context.push_line("    mov rbp, rsp");
 
-                scope.to_asm(parsing_context)?;
-                parsing_context.pop_stack_pointer();
+                    scope.to_asm(parsing_context)?;
+                    parsing_context.pop_stack_pointer();
+                } else {
+                    return Err(CompilationError::new(
+                        format!("function {} already exists", name).as_str(),
+                    ));
+                }
             }
         }
         Ok(())

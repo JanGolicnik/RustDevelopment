@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::compilation_error::CompilationError;
 use crate::parsing_nodes::ProgramNode;
@@ -31,6 +31,7 @@ pub struct ParsingContext {
     pub strings: Vec<GlobalString>,
     string_counter: usize,
     stack_pointers: Vec<StackPointer>,
+    function_names: HashSet<String>,
 }
 
 impl Clone for Variable {
@@ -209,6 +210,14 @@ impl ParsingContext {
             None
         }
     }
+
+    pub fn add_function_name(&mut self, name: String) -> bool {
+        if self.function_names.contains(&name) {
+            return false;
+        }
+        self.function_names.insert(name);
+        true
+    }
 }
 
 pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
@@ -225,6 +234,7 @@ pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
         strings: Vec::new(),
         string_counter: 0,
         stack_pointers: vec![main_stack],
+        function_names: HashSet::new(),
     };
 
     parsing_context.push_scope();
