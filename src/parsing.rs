@@ -18,15 +18,19 @@ pub struct Scope {
     parent: usize,
 }
 
-pub struct ParsingContext {
+pub struct StackPointer {
     stack_size: usize,
     scopes: Vec<Scope>,
-    pub output: String,
     current_scope: usize,
-    label_counter: usize,
     pub loop_exit_labels: Vec<String>,
+}
+
+pub struct ParsingContext {
+    pub output: String,
+    label_counter: usize,
     pub strings: Vec<GlobalString>,
     string_counter: usize,
+    stack_pointers: Vec<StackPointer>,
 }
 
 impl Clone for Variable {
@@ -71,12 +75,25 @@ impl Scope {
 impl ParsingContext {
     pub fn push_on_stack(&mut self, register: &str) {
         self.push_line(format!("    push {}", register).as_str());
-        self.stack_size += 8;
+        if let Some(p) = self.stack_pointers.last_mut() {
+            p.stack_size += 8;
+        }
     }
 
     pub fn pop_from_stack(&mut self, register: &str) {
         self.push_line(format!("    pop {}", register).as_str());
-        self.stack_size -= 8;
+        if let Some(p) = self.stack_pointers.last_mut() {
+            p.stack_size -= 8;
+        }
+    }
+
+    pub fn clear_current_stack(&mut self) {
+        if let Some(p) = self.stack_pointers.last_mut() {
+            while p.stack_size > 0 {
+                self.output.push_str("    pop rsi\n");
+                p.stack_size -= 8;
+            }
+        }
     }
 
     pub fn push_line(&mut self, string: &str) {
@@ -85,58 +102,55 @@ impl ParsingContext {
     }
 
     pub fn get_var(&mut self, name: &String) -> Option<Variable> {
-        let mut current_scope_index = self.current_scope;
+        if let Some(p) = self.stack_pointers.last_mut() {
+            let mut current_scope_index = p.current_scope;
 
-        while let Some(scope) = self.scopes.get_mut(current_scope_index) {
-            if let Some(var) = scope.variables.get(name) {
-                return Some(var.clone());
-            } else {
-                current_scope_index = scope.parent;
+            while let Some(scope) = p.scopes.get_mut(current_scope_index) {
+                if let Some(var) = scope.variables.get(name) {
+                    return Some(var.clone());
+                } else {
+                    current_scope_index = scope.parent;
+                }
             }
         }
         None
     }
 
     pub fn add_var(&mut self, name: String) -> Option<usize> {
-        // let mut current_scope_index = self.current_scope;
-        // while let Some(scope) = self.scopes.get_mut(current_scope_index) {
-        //     if scope.variables.get(&name).is_some() {
-        //         return false;
-        //     } else {
-        //         current_scope_index = scope.parent;
-        //     }
-        // }
-        if let Some(scope) = self.scopes.get_mut(self.current_scope) {
-            if scope
-                .variables
-                .insert(
-                    name,
-                    Variable {
-                        stack_position: self.stack_size,
-                    },
-                )
-                .is_some()
-            {
-                None
-            } else {
-                Some(self.stack_size)
+        if let Some(p) = self.stack_pointers.last_mut() {
+            if let Some(scope) = p.scopes.get_mut(p.current_scope) {
+                if scope
+                    .variables
+                    .insert(
+                        name,
+                        Variable {
+                            stack_position: p.stack_size,
+                        },
+                    )
+                    .is_none()
+                {
+                    return Some(p.stack_size);
+                }
             }
-        } else {
-            None
         }
+        None
     }
 
     pub fn push_scope(&mut self) {
-        self.scopes.push(Scope {
-            variables: HashMap::new(),
-            parent: self.current_scope,
-        });
-        self.current_scope = self.scopes.len() - 1
+        if let Some(p) = self.stack_pointers.last_mut() {
+            p.scopes.push(Scope {
+                variables: HashMap::new(),
+                parent: p.current_scope,
+            });
+            p.current_scope = p.scopes.len() - 1
+        }
     }
 
     pub fn pop_scope(&mut self) {
-        if let Some(scope) = self.scopes.pop() {
-            self.current_scope = scope.parent;
+        if let Some(p) = self.stack_pointers.last_mut() {
+            if let Some(scope) = p.scopes.pop() {
+                p.current_scope = scope.parent;
+            }
         }
     }
 
@@ -158,18 +172,59 @@ impl ParsingContext {
         self.string_counter += 1;
         format!("STRING{}", self.string_counter)
     }
+
+    pub fn add_stack_pointer(&mut self) {
+        self.stack_pointers.push(StackPointer {
+            stack_size: 0,
+            scopes: Vec::new(),
+            current_scope: usize::MAX,
+            loop_exit_labels: Vec::new(),
+        })
+    }
+
+    pub fn pop_stack_pointer(&mut self) {
+        self.stack_pointers.pop();
+    }
+
+    pub fn stack_pointers(&self) -> &Vec<StackPointer> {
+        &self.stack_pointers
+    }
+
+    pub fn add_loop_exit_label(&mut self, label: String) {
+        if let Some(p) = self.stack_pointers.last_mut() {
+            p.loop_exit_labels.push(label);
+        }
+    }
+
+    pub fn pop_loop_exit_label(&mut self) {
+        if let Some(p) = self.stack_pointers.last_mut() {
+            p.loop_exit_labels.pop();
+        }
+    }
+
+    pub fn current_loop_exit_label(&mut self) -> Option<String> {
+        if let Some(p) = self.stack_pointers.last() {
+            p.loop_exit_labels.last().cloned()
+        } else {
+            None
+        }
+    }
 }
 
 pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
-    let mut parsing_context: ParsingContext = ParsingContext {
+    let main_stack = StackPointer {
         stack_size: 0,
-        output: String::new(),
         scopes: Vec::new(),
         current_scope: usize::MAX,
-        label_counter: 0,
         loop_exit_labels: Vec::new(),
+    };
+
+    let mut parsing_context: ParsingContext = ParsingContext {
+        output: String::new(),
+        label_counter: 0,
         strings: Vec::new(),
         string_counter: 0,
+        stack_pointers: vec![main_stack],
     };
 
     parsing_context.push_scope();

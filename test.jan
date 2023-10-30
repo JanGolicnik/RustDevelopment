@@ -1,2 +1,13 @@
-print "Hello World";
-return 1;
+fn neki(){
+    let x = 0;
+    while x < 10 {
+        x = x + 1;
+    }
+    return x;
+}
+
+fn neki(){
+    return 1;
+}
+
+return neki();

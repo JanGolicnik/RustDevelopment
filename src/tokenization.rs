@@ -25,6 +25,7 @@ pub enum Token {
     Break,
     Print,
     String(String),
+    Function,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -53,6 +54,7 @@ impl Clone for Token {
             Token::Break => Token::Break,
             Token::Print => Token::Print,
             Token::String(val) => Token::String(val.clone()),
+            Token::Function => Token::Function,
         }
     }
 }
@@ -109,6 +111,10 @@ impl Tokens {
     pub fn tokens(&self) -> &Vec<Token> {
         &self.tokens
     }
+
+    pub fn _reset(&mut self) {
+        self.index = 0;
+    }
 }
 pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
     let mut tokens: Vec<Token> = Vec::new();
@@ -164,6 +170,7 @@ fn tokenize_word(word: &str) -> Option<Token> {
         "while" => Some(Token::While),
         "break" => Some(Token::Break),
         "print" => Some(Token::Print),
+        "fn" => Some(Token::Function),
         _ => str_to_token(word),
     }
 }

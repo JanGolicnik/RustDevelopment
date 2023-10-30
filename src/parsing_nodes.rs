@@ -8,11 +8,6 @@ pub struct ProgramNode {
     statements: Vec<StatementNode>,
 }
 
-enum PrintValue {
-    Expr(Expression),
-    String(String),
-}
-
 enum StatementNode {
     Declaration {
         literal: String,
@@ -38,7 +33,11 @@ enum StatementNode {
     },
     Break,
     Print {
-        val: PrintValue,
+        expr: Expression,
+    },
+    Function {
+        name: String,
+        scope: Box<StatementNode>,
     },
 }
 
@@ -47,6 +46,7 @@ enum Term {
     Int(i32),
     Identifier(String),
     String(String),
+    FunctionCall(String),
 }
 
 #[derive(Debug)]
@@ -67,7 +67,17 @@ impl Term {
             Token::Int(int_token_val) => Ok(Term::Int(*int_token_val)),
             Token::Identifier(name) => {
                 let name = name.clone();
-                Ok(Term::Identifier(name))
+                match tokens.peek(0)? {
+                    Token::OpenBracket => match tokens.peek(1)? {
+                        Token::ClosedBracket => {
+                            tokens.next()?;
+                            tokens.next()?;
+                            Ok(Term::FunctionCall(name))
+                        }
+                        _ => Err(CompilationError::new("expected closed bracket")),
+                    },
+                    _ => Ok(Term::Identifier(name)),
+                }
             }
             Token::String(val) => Ok(Term::String(val.clone())),
             _ => Err(CompilationError::new(
@@ -96,6 +106,10 @@ impl Term {
             Term::String(val) => {
                 let label = parsing_context.add_string(val);
                 parsing_context.push_line(format!("    mov rdi, {}", label).as_str());
+                Ok(())
+            }
+            Term::FunctionCall(val) => {
+                parsing_context.push_line(format!("    call {}", val).as_str());
                 Ok(())
             }
         }
@@ -260,22 +274,9 @@ impl StatementNode {
                 }
             },
             Token::Print => {
-                let node = match tokens.peek(0)?.clone() {
-                    Token::String(val) => {
-                        tokens.next()?;
-                        StatementNode::Print {
-                            val: PrintValue::String(val.clone()),
-                        }
-                    }
-                    _ => {
-                        let expr = Expression::parse(tokens, 0)?;
-                        StatementNode::Print {
-                            val: PrintValue::Expr(expr),
-                        }
-                    }
-                };
+                let expr = Expression::parse(tokens, 0)?;
                 match tokens.next()? {
-                    Token::EndStatement => node,
+                    Token::EndStatement => StatementNode::Print { expr },
                     _ => {
                         return Err(CompilationError::new("Expected ;"));
                     }
@@ -285,6 +286,7 @@ impl StatementNode {
                 let var_name = name.clone();
                 StatementNode::parse_assignment(tokens, var_name)?
             }
+            Token::Function => StatementNode::parse_function(tokens)?,
             _ => {
                 return Err(CompilationError::new(
                     format!("Unexpected token {:?}", tokens.peek(0)?).as_str(),
@@ -342,6 +344,33 @@ impl StatementNode {
         }
     }
 
+    fn parse_function(tokens: &mut Tokens) -> Result<Self, CompilationError> {
+        match tokens.next()? {
+            Token::Identifier(val) => {
+                let name = val.clone();
+                match tokens.next()? {
+                    Token::OpenBracket => match tokens.next()? {
+                        Token::ClosedBracket => match tokens.next()? {
+                            Token::OpenCurly => {
+                                let scope = StatementNode::parse_scope(tokens)?;
+                                Ok(StatementNode::Function {
+                                    name,
+                                    scope: Box::new(scope),
+                                })
+                            }
+                            _ => Err(CompilationError::new("expected scope")),
+                        },
+                        _ => Err(CompilationError::new("expected )")),
+                    },
+                    _ => Err(CompilationError::new("expected (")),
+                }
+            }
+            _ => Err(CompilationError::new(
+                "expected idnetifier for function call",
+            )),
+        }
+    }
+
     fn parse_scope(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
         println!("parsing scope2 {:?}", tokens.peek(0)?);
@@ -351,7 +380,6 @@ impl StatementNode {
                 return Ok(StatementNode::Scope { statements });
             }
             _ => {
-                println!("CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCcccc");
                 let stmt = StatementNode::parse(tokens)?;
                 statements.push(stmt);
                 true
@@ -406,9 +434,15 @@ impl StatementNode {
                 }
             }
             StatementNode::Return { expr } => {
-                expr.to_asm(parsing_context)?;
-                parsing_context.push_line("    mov rax, 60");
-                parsing_context.push_line("    syscall");
+                if parsing_context.stack_pointers().len() > 1 {
+                    expr.to_asm(parsing_context)?;
+                    parsing_context.clear_current_stack();
+                    parsing_context.push_line("    ret");
+                } else {
+                    expr.to_asm(parsing_context)?;
+                    parsing_context.push_line("    mov rax, 60");
+                    parsing_context.push_line("    syscall");
+                }
             }
             StatementNode::Scope { statements } => {
                 parsing_context.push_scope();
@@ -429,7 +463,7 @@ impl StatementNode {
                 let true_label = parsing_context.new_label();
                 let false_label = parsing_context.new_label();
 
-                parsing_context.loop_exit_labels.push(false_label.clone());
+                parsing_context.add_loop_exit_label(false_label.clone());
 
                 parsing_context.push_line(format!("{true_label}:").as_str());
                 expr.to_asm(parsing_context)?;
@@ -439,7 +473,7 @@ impl StatementNode {
                 parsing_context.push_line(format!("    jmp {true_label}").as_str());
                 parsing_context.push_line(format!("{false_label}:").as_str());
 
-                parsing_context.loop_exit_labels.pop();
+                parsing_context.pop_loop_exit_label();
             }
             StatementNode::Assignment { literal, expr } => {
                 expr.to_asm(parsing_context)?;
@@ -454,34 +488,28 @@ impl StatementNode {
                 }
             }
             StatementNode::Break => {
-                if let Some(label) = parsing_context.loop_exit_labels.last() {
+                if let Some(label) = parsing_context.current_loop_exit_label() {
                     parsing_context.push_line(format!("    jmp {}", label).as_str())
                 } else {
                     return Err(CompilationError::new("break without label"));
                 }
             }
-            StatementNode::Print { val } => match val {
-                PrintValue::Expr(expr) => {
-                    expr.to_asm(parsing_context)?;
-                    parsing_context.push_line("    mov al, dil");
-                    parsing_context.push_line("    mov byte [char_buffer], al");
-                    parsing_context.push_line("    mov rax, 1");
-                    parsing_context.push_line("    mov rsi, char_buffer");
-                    parsing_context.push_line("    mov rdi, 1");
-                    parsing_context.push_line("    mov rdx, 1");
-                    parsing_context.push_line("    syscall");
-                }
-                PrintValue::String(val) => {
-                    let label = parsing_context.add_string(val);
-                    parsing_context.push_line("    mov rax, 1");
-                    parsing_context.push_line("    mov rdi, 1");
-                    parsing_context.push_line(format!("    mov rsi, {}", label).as_str());
-                    parsing_context.push_line(format!("    mov rdx, {}", val.len()).as_str());
-                    parsing_context.push_line("    syscall");
-                }
-            },
-            _ => {
-                return Err(CompilationError::new("statement not implemented yet"));
+            StatementNode::Print { expr } => {
+                expr.to_asm(parsing_context)?;
+                parsing_context.push_line("    mov rax, 1");
+                parsing_context.push_line("    mov rsi, rdi");
+                parsing_context.push_line("    mov rdi, 1");
+                parsing_context.push_line("    mov rdx, 1");
+                parsing_context.push_line("    syscall");
+            }
+            StatementNode::Function { name, scope } => {
+                parsing_context.add_stack_pointer();
+                parsing_context.push_line(format!("{}:", name).as_str());
+                parsing_context.push_on_stack("rbp");
+                parsing_context.push_line("    mov rbp, rsp");
+
+                scope.to_asm(parsing_context)?;
+                parsing_context.pop_stack_pointer();
             }
         }
         Ok(())
@@ -501,8 +529,11 @@ impl ProgramNode {
     }
 
     pub fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
-        parsing_context.push_line("section .bss");
-        parsing_context.push_line("    char_buffer resb 4");
+        for stmt in &self.statements {
+            if let StatementNode::Function { name: _, scope: _ } = stmt {
+                stmt.to_asm(parsing_context)?;
+            }
+        }
 
         parsing_context.push_line("section .text");
         parsing_context.push_line("global _start:");
@@ -511,7 +542,10 @@ impl ProgramNode {
         parsing_context.push_line("    mov rbp, rsp");
 
         for stmt in &self.statements {
-            stmt.to_asm(parsing_context)?;
+            match stmt {
+                StatementNode::Function { name: _, scope: _ } => {}
+                _ => stmt.to_asm(parsing_context)?,
+            }
         }
 
         parsing_context.push_line("section .data");
