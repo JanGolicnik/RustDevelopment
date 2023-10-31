@@ -1,5 +1,6 @@
 use crate::{
     compilation_error::CompilationError,
+    match_token,
     parsing::ParsingContext,
     tokenization::{OperatorInfo, Token, Tokens},
 };
@@ -62,41 +63,40 @@ enum Expression {
 
 impl Term {
     fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        let token = tokens.next()?;
-        match token {
-            Token::Int(int_token_val) => Ok(Term::Int(*int_token_val)),
+        match_token!(tokens.next()?, "weird term",
+            Token::Int(int_token_val) => {Ok(Term::Int(*int_token_val))},
+            Token::String(val) => {Ok(Term::String(val.clone()))},
             Token::Identifier(name) => {
-                let name = name.clone();
-                match tokens.peek(0)? {
-                    Token::OpenBracket => {
-                        tokens.next()?;
-                        let mut expressions: Vec<Expression> = Vec::new();
-                        while match tokens.peek(0)? {
-                            Token::ClosedBracket => {
-                                tokens.next()?;
-                                false
-                            }
-                            Token::Comma => {
-                                tokens.next()?;
-                                true
-                            }
-                            _ => {
-                                let expr = Expression::parse(tokens, 0)?;
-                                expressions.push(expr);
-                                true
-                            }
-                        } {}
-                        Ok(Term::FunctionCall(name, expressions))
-                    }
+                    let name = name.clone();
+                    match_token!(tokens.peek(0)?,
+                         Token::OpenBracket => {
+                            tokens.next()?;
+                            let mut expressions: Vec<Expression> = Vec::new();
 
-                    _ => Ok(Term::Identifier(name)),
+                            while match_token!(tokens.peek(0)?,
+                                Token::ClosedBracket => {
+                                    tokens.next()?;
+                                    false
+                                },
+                                Token::Comma => {
+                                    tokens.next()?;
+                                    true
+                                },
+                                _=> {
+                                    let expr = Expression::parse(tokens, 0)?;
+                                    expressions.push(expr);
+                                    true
+                                }
+                            ) {}
+
+                            Ok(Term::FunctionCall(name, expressions))
+                        },
+                        _ => {
+                            Ok(Term::Identifier(name))
+                        }
+                    )
                 }
-            }
-            Token::String(val) => Ok(Term::String(val.clone())),
-            _ => Err(CompilationError::new(
-                format!("Weird term {:?}", token).as_str(),
-            )),
-        }
+        )
     }
 
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
@@ -148,12 +148,7 @@ impl Expression {
             Token::OpenBracket => {
                 tokens.next()?;
                 let val = Expression::parse(tokens, 0)?;
-                match tokens.next()? {
-                    Token::ClosedBracket => val,
-                    _ => {
-                        return Err(CompilationError::new("Expected close paranthases"));
-                    }
-                }
+                match_token!(tokens.next()?, Token::ClosedBracket => {val}, "expected )")
             }
             _ => Expression::Term(Term::parse(tokens)?),
         };
@@ -173,18 +168,17 @@ impl Expression {
                 tokens.next()?;
                 let right_expression = Expression::parse(tokens, next_min_precedence)?;
 
-                if !matches!(
-                    token,
+                match_token!(
+                    &token,
                     Token::Plus
                         | Token::Star
                         | Token::Slash
                         | Token::Minus
                         | Token::LessThan
                         | Token::GreaterThan
-                        | Token::Equals
-                ) {
-                    return Err(CompilationError::new("invalid expression operator"));
-                }
+                        | Token::Equals,
+                    "invalid expression operator"
+                );
 
                 expr = Expression::Binary {
                     operator: token,
@@ -286,18 +280,18 @@ impl Expression {
 
 impl StatementNode {
     fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        Ok(match tokens.next()? {
-            Token::Return => StatementNode::parse_return(tokens)?,
-            Token::Declaration => StatementNode::parse_declaration(tokens)?,
-            Token::If => StatementNode::parse_if(tokens)?,
-            Token::OpenCurly => StatementNode::parse_scope(tokens)?,
-            Token::While => StatementNode::parse_while(tokens)?,
-            Token::Break => match tokens.next()? {
+        let node = match_token!(tokens.next()?, "unexpected token",
+            Token::Return => {StatementNode::parse_return(tokens)?},
+            Token::Declaration => {StatementNode::parse_declaration(tokens)?},
+            Token::If => {StatementNode::parse_if(tokens)?},
+            Token::OpenCurly => {StatementNode::parse_scope(tokens)?},
+            Token::While => {StatementNode::parse_while(tokens)?},
+            Token::Break => {match tokens.next()? {
                 Token::EndStatement => StatementNode::Break,
                 _ => {
                     return Err(CompilationError::new("Expected ;"));
                 }
-            },
+            }},
             Token::Print => {
                 let expr = Expression::parse(tokens, 0)?;
                 match tokens.next()? {
@@ -306,155 +300,110 @@ impl StatementNode {
                         return Err(CompilationError::new("Expected ;"));
                     }
                 }
-            }
+            },
             Token::Identifier(name) => {
                 let var_name = name.clone();
                 StatementNode::parse_assignment(tokens, var_name)?
-            }
-            Token::Function => StatementNode::parse_function(tokens)?,
-            _ => {
-                return Err(CompilationError::new(
-                    format!("Unexpected token {:?}", tokens.peek(0)?).as_str(),
-                ));
-            }
-        })
+            },
+            Token::Function => {StatementNode::parse_function(tokens)?}
+        );
+        Ok(node)
     }
 
     fn parse_return(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let expr = Expression::parse(tokens, 0)?;
-        match tokens.next()? {
-            Token::EndStatement => Ok(StatementNode::Return { expr }),
-            _ => Err(CompilationError::new("expected semicolon")),
-        }
+        match_token!(tokens.next()?, Token::EndStatement, "expected endstatement");
+        Ok(StatementNode::Return { expr })
     }
 
     fn parse_declaration(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        match tokens.next()? {
-            Token::Identifier(name) => {
-                let name = name.clone();
-
-                match tokens.next()? {
-                    Token::Equals => {
-                        let expr = Expression::parse(tokens, 0)?;
-                        match tokens.next()? {
-                            Token::EndStatement => Ok(StatementNode::Declaration {
-                                literal: name,
-                                expr,
-                            }),
-                            _ => Err(CompilationError::new(
-                                "expected end statement for declaration",
-                            )),
-                        }
-                    }
-                    _ => Err(CompilationError::new("expected equals ")),
-                }
-            }
-            _ => Err(CompilationError::new("expected identifier")),
-        }
+        let identifier_name =
+            match_token!(tokens.next()?, Token::Identifier(name) => {name}, "expected identifier");
+        let literal = identifier_name.clone();
+        match_token!(tokens.next()?, Token::Equals, "expected equals");
+        let expr = Expression::parse(tokens, 0)?;
+        match_token!(tokens.next()?, Token::EndStatement, "expected endstatement");
+        Ok(StatementNode::Declaration { expr, literal })
     }
 
     fn parse_if(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let expr = Expression::parse(tokens, 0)?;
-        match tokens.next()? {
-            Token::OpenCurly => {
-                let scope = StatementNode::parse_scope(tokens)?;
-                Ok(StatementNode::If {
-                    expr,
-                    scope: Box::new(scope),
-                })
-            }
-            _ => Err(CompilationError::new("expected scope")),
-        }
+        match_token!(tokens.next()?, Token::OpenCurly, "expected scope");
+        let scope = StatementNode::parse_scope(tokens)?;
+        Ok(StatementNode::If {
+            expr,
+            scope: Box::new(scope),
+        })
     }
 
     fn parse_function(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        match tokens.next()? {
-            Token::Identifier(val) => {
-                let name = val.clone();
-                match tokens.next()? {
-                    Token::OpenBracket => {
-                        let mut args: Vec<String> = Vec::new();
-                        while match tokens.next()? {
-                            Token::ClosedBracket => false,
-                            Token::Identifier(name) => {
-                                let name = name.clone();
-                                if let Token::Comma = tokens.peek(0)? {
-                                    tokens.next()?;
-                                }
-                                args.push(name);
-                                true
-                            }
-                            _ => {
-                                return Err(CompilationError::new(
-                                    "unexpected token in function definition",
-                                ));
-                            }
-                        } {}
-
-                        match tokens.peek(0)? {
-                            Token::OpenCurly => {
-                                tokens.next()?;
-                                let scope = StatementNode::parse_scope(tokens)?;
-                                Ok(StatementNode::Function {
-                                    name,
-                                    scope: Box::new(scope),
-                                    args,
-                                })
-                            }
-                            _ => Err(CompilationError::new("expected scope")),
-                        }
-                    }
-                    _ => Err(CompilationError::new("expected (")),
-                }
+        let identifier_name = match_token!(tokens.next()?, Token::Identifier(name) => {name}, "expected function name");
+        let name = identifier_name.clone();
+        match_token!(tokens.next()?, Token::OpenBracket, "expected (");
+        let mut args: Vec<String> = Vec::new();
+        while match_token!(tokens.next()?, "unexpected token in function definition",
+        Token::ClosedBracket => {false},
+        Token::Identifier(name) => {
+            let name = name.clone();
+            if let Token::Comma = tokens.peek(0)? {
+                tokens.next()?;
             }
-            _ => Err(CompilationError::new("expected fucntion name")),
-        }
+            args.push(name);
+            true
+        }) {}
+
+        match_token!(tokens.peek(0)?,
+         Token::OpenCurly => {
+            tokens.next()?;
+                let scope = StatementNode::parse_scope(tokens)?;
+                Ok(StatementNode::Function {
+                    name,
+                    scope: Box::new(scope),
+                    args,
+                })
+        }, "expected scope")
     }
 
     fn parse_scope(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
-        while match tokens.peek(0)? {
-            Token::ClosedCurly => {
-                tokens.next()?;
-                return Ok(StatementNode::Scope { statements });
-            }
-            _ => {
-                let stmt = StatementNode::parse(tokens)?;
-                statements.push(stmt);
-                true
-            }
-        } {}
+        while match_token!(tokens.peek(0)?, Token::ClosedCurly => {
+            tokens.next()?;
+            return Ok(StatementNode::Scope { statements });
+        },
+        _ => {
+            let stmt = StatementNode::parse(tokens)?;
+            statements.push(stmt);
+            true
+        }) {}
         Err(CompilationError::new("unclosed scope"))
     }
 
     fn parse_while(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let expr = Expression::parse(tokens, 0)?;
-        match tokens.next()? {
+        match_token!(tokens.next()?,
             Token::OpenCurly => {
                 let scope = StatementNode::parse_scope(tokens)?;
                 Ok(StatementNode::While {
                     expr,
                     scope: Box::new(scope),
                 })
-            }
-            _ => Err(CompilationError::new("expected scope")),
-        }
+            },
+            _ => {Err(CompilationError::new("expected scope"))}
+        )
     }
 
     fn parse_assignment(tokens: &mut Tokens, var_name: String) -> Result<Self, CompilationError> {
-        match tokens.next()? {
-            Token::Equals => {
+        match_token!(tokens.next()?, Token::Equals => {
                 let expr = Expression::parse(tokens, 0)?;
-                match tokens.next()? {
-                    Token::EndStatement => Ok(StatementNode::Assignment {
+                match_token!(tokens.next()?,
+                    Token::EndStatement => {Ok(StatementNode::Assignment {
                         literal: var_name,
                         expr,
-                    }),
-                    _ => Err(CompilationError::new("expected end statement")),
-                }
-            }
-            _ => Err(CompilationError::new("expected equals ")),
-        }
+                    })},
+                "expected end statement")
+            },
+            _ => {Err(CompilationError::new("expected equals "))}
+        )
     }
 
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
