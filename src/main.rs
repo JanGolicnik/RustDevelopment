@@ -22,23 +22,15 @@ fn main() {
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");
 
     match tokenize(&file_string) {
-        Ok(mut tokens) => {
-            tokens
-                .tokens()
-                .iter()
-                .for_each(|token| println!("{:?}", token));
-            match parse(&mut tokens) {
-                Ok(output) => assemble(output),
-                Err(e) => eprintln!("{}", e),
-            }
-        }
+        Ok(mut tokens) => match parse(&mut tokens) {
+            Ok(output) => assemble(output),
+            Err(e) => eprintln!("{}", e),
+        },
         Err(e) => eprintln!("{}", e),
     }
 }
 
 fn assemble(code: String) {
-    println!("OUTPUT: \n{code}");
-
     fs::create_dir_all("out").expect("failed to create dir");
     fs::write("out/assembly.asm", code).expect("error writing to file");
 

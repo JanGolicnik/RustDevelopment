@@ -4,20 +4,24 @@ use crate::compilation_error::CompilationError;
 use crate::parsing_nodes::ProgramNode;
 use crate::tokenization::Tokens;
 
+#[derive(Debug)]
 pub struct Variable {
-    pub stack_position: usize,
+    pub stack_position: i64,
 }
 
+#[derive(Debug)]
 pub struct GlobalString {
     pub string: String,
     pub label: String,
 }
 
+#[derive(Debug)]
 pub struct Scope {
     variables: HashMap<String, Variable>,
     parent: usize,
 }
 
+#[derive(Debug)]
 pub struct StackPointer {
     stack_size: usize,
     scopes: Vec<Scope>,
@@ -25,6 +29,7 @@ pub struct StackPointer {
     pub loop_exit_labels: Vec<String>,
 }
 
+#[derive(Debug)]
 pub struct ParsingContext {
     pub output: String,
     label_counter: usize,
@@ -38,37 +43,6 @@ impl Clone for Variable {
     fn clone(&self) -> Self {
         Self {
             stack_position: self.stack_position,
-        }
-    }
-}
-
-impl Scope {
-    fn _get_var_recursive(&self, scopes: &Vec<Scope>, name: &String) -> Option<Variable> {
-        if let Some(var) = self.variables.get(name) {
-            Some(var.clone())
-        } else if let Some(scope) = scopes.get(self.parent) {
-            scope._get_var_recursive(scopes, name)
-        } else {
-            None
-        }
-    }
-
-    fn _get_var(&self, name: &String) -> Option<Variable> {
-        self.variables.get(name).cloned()
-    }
-
-    fn _add_var_recursive(
-        &mut self,
-        scopes: &Vec<Scope>,
-        name: &String,
-        stack_position: usize,
-    ) -> bool {
-        if self._get_var_recursive(scopes, name).is_some() {
-            false
-        } else {
-            self.variables
-                .insert(name.clone(), Variable { stack_position });
-            true
         }
     }
 }
@@ -102,11 +76,11 @@ impl ParsingContext {
         self.output.push('\n');
     }
 
-    pub fn get_var(&mut self, name: &String) -> Option<Variable> {
-        if let Some(p) = self.stack_pointers.last_mut() {
+    pub fn get_var(&self, name: &String) -> Option<Variable> {
+        if let Some(p) = self.stack_pointers.last() {
             let mut current_scope_index = p.current_scope;
 
-            while let Some(scope) = p.scopes.get_mut(current_scope_index) {
+            while let Some(scope) = p.scopes.get(current_scope_index) {
                 if let Some(var) = scope.variables.get(name) {
                     return Some(var.clone());
                 } else {
@@ -125,7 +99,7 @@ impl ParsingContext {
                     .insert(
                         name,
                         Variable {
-                            stack_position: p.stack_size,
+                            stack_position: p.stack_size as i64,
                         },
                     )
                     .is_none()
@@ -135,6 +109,19 @@ impl ParsingContext {
             }
         }
         None
+    }
+
+    pub fn add_offset_var(&mut self, name: String, offset: i64) {
+        if let Some(p) = self.stack_pointers.last_mut() {
+            if let Some(scope) = p.scopes.get_mut(p.current_scope) {
+                scope.variables.insert(
+                    name,
+                    Variable {
+                        stack_position: offset,
+                    },
+                );
+            }
+        }
     }
 
     pub fn push_scope(&mut self) {
@@ -217,6 +204,10 @@ impl ParsingContext {
         }
         self.function_names.insert(name);
         true
+    }
+
+    pub fn function_exists(&self, name: &String) -> bool {
+        self.function_names.contains(name)
     }
 }
 

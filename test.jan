@@ -1,13 +1,12 @@
-fn neki(){
-    let x = 0;
-    while x < 10 {
-        x = x + 1;
+fn Print(ptr, len){
+    let i = 1;
+    while i < len {
+        print i + ptr;
+        i = i + 1;
     }
-    return x;
+    return i;
 }
 
-fn neki(){
-    return 1;
-}
+let hello_string = "Hello World!";
 
-return neki();
+return Print(hello_string, 12);

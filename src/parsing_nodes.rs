@@ -38,6 +38,7 @@ enum StatementNode {
     Function {
         name: String,
         scope: Box<StatementNode>,
+        args: Vec<String>,
     },
 }
 
@@ -46,7 +47,7 @@ enum Term {
     Int(i32),
     Identifier(String),
     String(String),
-    FunctionCall(String),
+    FunctionCall(String, Vec<Expression>),
 }
 
 #[derive(Debug)]
@@ -62,20 +63,32 @@ enum Expression {
 impl Term {
     fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let token = tokens.next()?;
-        println!("{:?}", token);
         match token {
             Token::Int(int_token_val) => Ok(Term::Int(*int_token_val)),
             Token::Identifier(name) => {
                 let name = name.clone();
                 match tokens.peek(0)? {
-                    Token::OpenBracket => match tokens.peek(1)? {
-                        Token::ClosedBracket => {
-                            tokens.next()?;
-                            tokens.next()?;
-                            Ok(Term::FunctionCall(name))
-                        }
-                        _ => Err(CompilationError::new("expected closed bracket")),
-                    },
+                    Token::OpenBracket => {
+                        tokens.next()?;
+                        let mut expressions: Vec<Expression> = Vec::new();
+                        while match tokens.peek(0)? {
+                            Token::ClosedBracket => {
+                                tokens.next()?;
+                                false
+                            }
+                            Token::Comma => {
+                                tokens.next()?;
+                                true
+                            }
+                            _ => {
+                                let expr = Expression::parse(tokens, 0)?;
+                                expressions.push(expr);
+                                true
+                            }
+                        } {}
+                        Ok(Term::FunctionCall(name, expressions))
+                    }
+
                     _ => Ok(Term::Identifier(name)),
                 }
             }
@@ -94,8 +107,11 @@ impl Term {
             }
             Term::Identifier(name) => {
                 if let Some(var) = parsing_context.get_var(name) {
-                    parsing_context
-                        .push_line(format!("    mov rdi, [rbp - {}]", var.stack_position).as_str());
+                    let sign = if var.stack_position < 0 { "+" } else { "-" };
+                    parsing_context.push_line(
+                        format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
+                            .as_str(),
+                    );
                     Ok(())
                 } else {
                     Err(CompilationError::new(
@@ -108,9 +124,19 @@ impl Term {
                 parsing_context.push_line(format!("    mov rdi, {}", label).as_str());
                 Ok(())
             }
-            Term::FunctionCall(val) => {
-                parsing_context.push_line(format!("    call {}", val).as_str());
-                Ok(())
+            Term::FunctionCall(name, args) => {
+                if parsing_context.function_exists(name) {
+                    for i in 0..args.len() {
+                        if let Some(arg) = args.get(i) {
+                            arg.to_asm(parsing_context)?;
+                            parsing_context.push_on_stack("rdi");
+                        }
+                    }
+                    parsing_context.push_line(format!("    call {}", name).as_str());
+                    Ok(())
+                } else {
+                    Err(CompilationError::new("undefined function"))
+                }
             }
         }
     }
@@ -118,7 +144,6 @@ impl Term {
 
 impl Expression {
     fn parse(tokens: &mut Tokens, min_precedence: usize) -> Result<Self, CompilationError> {
-        println!("expression {:?}", tokens.peek(0));
         let mut expr = match tokens.peek(0)? {
             Token::OpenBracket => {
                 tokens.next()?;
@@ -311,8 +336,6 @@ impl StatementNode {
                 match tokens.next()? {
                     Token::Equals => {
                         let expr = Expression::parse(tokens, 0)?;
-                        println!("expr: {:?}", expr);
-                        println!("tok: {:?}", tokens.peek(0)?);
                         match tokens.next()? {
                             Token::EndStatement => Ok(StatementNode::Declaration {
                                 literal: name,
@@ -349,31 +372,47 @@ impl StatementNode {
             Token::Identifier(val) => {
                 let name = val.clone();
                 match tokens.next()? {
-                    Token::OpenBracket => match tokens.next()? {
-                        Token::ClosedBracket => match tokens.next()? {
+                    Token::OpenBracket => {
+                        let mut args: Vec<String> = Vec::new();
+                        while match tokens.next()? {
+                            Token::ClosedBracket => false,
+                            Token::Identifier(name) => {
+                                let name = name.clone();
+                                if let Token::Comma = tokens.peek(0)? {
+                                    tokens.next()?;
+                                }
+                                args.push(name);
+                                true
+                            }
+                            _ => {
+                                return Err(CompilationError::new(
+                                    "unexpected token in function definition",
+                                ));
+                            }
+                        } {}
+
+                        match tokens.peek(0)? {
                             Token::OpenCurly => {
+                                tokens.next()?;
                                 let scope = StatementNode::parse_scope(tokens)?;
                                 Ok(StatementNode::Function {
                                     name,
                                     scope: Box::new(scope),
+                                    args,
                                 })
                             }
                             _ => Err(CompilationError::new("expected scope")),
-                        },
-                        _ => Err(CompilationError::new("expected )")),
-                    },
+                        }
+                    }
                     _ => Err(CompilationError::new("expected (")),
                 }
             }
-            _ => Err(CompilationError::new(
-                "expected idnetifier for function call",
-            )),
+            _ => Err(CompilationError::new("expected fucntion name")),
         }
     }
 
     fn parse_scope(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
-        println!("parsing scope2 {:?}", tokens.peek(0)?);
         while match tokens.peek(0)? {
             Token::ClosedCurly => {
                 tokens.next()?;
@@ -389,10 +428,7 @@ impl StatementNode {
     }
 
     fn parse_while(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        println!("parsing while");
-        println!("parsing expr");
         let expr = Expression::parse(tokens, 0)?;
-        println!("parsing scope {:?}", tokens.peek(0)?);
         match tokens.next()? {
             Token::OpenCurly => {
                 let scope = StatementNode::parse_scope(tokens)?;
@@ -502,14 +538,23 @@ impl StatementNode {
                 parsing_context.push_line("    mov rdx, 1");
                 parsing_context.push_line("    syscall");
             }
-            StatementNode::Function { name, scope } => {
+            StatementNode::Function { name, scope, args } => {
                 if parsing_context.add_function_name(name.clone()) {
                     parsing_context.add_stack_pointer();
                     parsing_context.push_line(format!("{}:", name).as_str());
                     parsing_context.push_on_stack("rbp");
                     parsing_context.push_line("    mov rbp, rsp");
 
+                    parsing_context.push_scope();
+                    for i in 0..args.len() {
+                        if let Some(arg) = args.get(i) {
+                            let offset = -(args.len() as i64 - i as i64 + 1) * 8;
+                            parsing_context.add_offset_var(arg.clone(), offset);
+                        }
+                    }
+
                     scope.to_asm(parsing_context)?;
+                    parsing_context.pop_scope();
                     parsing_context.pop_stack_pointer();
                 } else {
                     return Err(CompilationError::new(
@@ -536,7 +581,12 @@ impl ProgramNode {
 
     pub fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
         for stmt in &self.statements {
-            if let StatementNode::Function { name: _, scope: _ } = stmt {
+            if let StatementNode::Function {
+                name: _,
+                scope: _,
+                args: _,
+            } = stmt
+            {
                 stmt.to_asm(parsing_context)?;
             }
         }
@@ -549,7 +599,11 @@ impl ProgramNode {
 
         for stmt in &self.statements {
             match stmt {
-                StatementNode::Function { name: _, scope: _ } => {}
+                StatementNode::Function {
+                    name: _,
+                    scope: _,
+                    args: _,
+                } => {}
                 _ => stmt.to_asm(parsing_context)?,
             }
         }

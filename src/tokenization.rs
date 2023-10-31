@@ -26,6 +26,7 @@ pub enum Token {
     Print,
     String(String),
     Function,
+    Comma,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -55,6 +56,7 @@ impl Clone for Token {
             Token::Print => Token::Print,
             Token::String(val) => Token::String(val.clone()),
             Token::Function => Token::Function,
+            Token::Comma => Token::Comma,
         }
     }
 }
@@ -108,7 +110,7 @@ impl Tokens {
         }
     }
 
-    pub fn tokens(&self) -> &Vec<Token> {
+    pub fn _tokens(&self) -> &Vec<Token> {
         &self.tokens
     }
 
@@ -185,7 +187,21 @@ fn str_to_token(chars: &str) -> Option<Token> {
 fn is_separator(grapheme: &str) -> bool {
     matches!(
         grapheme,
-        ";" | " " | "=" | "\n" | "+" | "*" | "-" | "/" | "(" | ")" | "{" | "}" | "<" | ">" | "\""
+        ";" | " "
+            | "="
+            | "\n"
+            | "+"
+            | "*"
+            | "-"
+            | "/"
+            | "("
+            | ")"
+            | "{"
+            | "}"
+            | "<"
+            | ">"
+            | "\""
+            | ","
     )
 }
 
@@ -207,14 +223,11 @@ fn tokenize_separator(
         "}" => Some(Token::ClosedCurly),
         "<" => Some(Token::LessThan),
         ">" => Some(Token::GreaterThan),
+        "," => Some(Token::Comma),
         "\"" => {
-            println!("AAAAAA");
             let mut chars: Vec<&str> = Vec::new();
             *index += 1;
-            println!("{:?}", graphemes);
-            println!("{:?}", graphemes.get(*index));
             while let Some(gr) = graphemes.get(*index) {
-                println!("{gr}");
                 if *gr == "\"" {
                     let string = chars.iter().map(|s| s.to_string()).collect::<String>();
                     return Ok(Some(Token::String(string)));
