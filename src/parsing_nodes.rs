@@ -13,6 +13,7 @@ enum StatementNode {
     Declaration {
         literal: String,
         expr: Expression,
+        size: usize,
     },
     Return {
         expr: Expression,
@@ -31,6 +32,7 @@ enum StatementNode {
     Assignment {
         literal: String,
         expr: Expression,
+        index_expr: Option<Expression>,
     },
     Break,
     Print {
@@ -46,7 +48,7 @@ enum StatementNode {
 #[derive(Debug)]
 enum Term {
     Int(i32),
-    Identifier(String),
+    Identifier(String, Option<Box<Expression>>),
     String(String),
     FunctionCall(String, Vec<Expression>),
 }
@@ -91,8 +93,16 @@ impl Term {
 
                             Ok(Term::FunctionCall(name, expressions))
                         },
+                        Token::OpenSquare => {
+                            tokens.next()?;
+                            let expr = Expression::parse(tokens, 0)?;
+                            match_token!(tokens.next()?, 
+                                Token::ClosedSquare => {
+                                    Ok(Term::Identifier(name, Some(Box::new(expr))))
+                                }, "expected ]")
+                        },
                         _ => {
-                            Ok(Term::Identifier(name))
+                            Ok(Term::Identifier(name, None))
                         }
                     )
                 }
@@ -105,13 +115,26 @@ impl Term {
                 parsing_context.push_line(format!("    mov rdi, {}", val).as_str());
                 Ok(())
             }
-            Term::Identifier(name) => {
+            Term::Identifier(name, index_expr) => {
                 if let Some(var) = parsing_context.get_var(name) {
                     let sign = if var.stack_position < 0 { "+" } else { "-" };
-                    parsing_context.push_line(
-                        format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
-                            .as_str(),
-                    );
+                    match index_expr {
+                        Some(index_expr) => {
+                            index_expr.to_asm(parsing_context)?;
+                            parsing_context.push_line("    mov rax, rdi");
+
+                            parsing_context.push_line(
+                                format!("    mov rdi, [rbp {} {} + rax * 4]", sign, var.stack_position.abs())
+                                    .as_str(),
+                            );
+                        }
+                        None => {
+                            parsing_context.push_line(
+                                format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
+                                    .as_str(),
+                            );
+                        }
+                    }
                     Ok(())
                 } else {
                     Err(CompilationError::new(
@@ -320,10 +343,32 @@ impl StatementNode {
         let identifier_name =
             match_token!(tokens.next()?, Token::Identifier(name) => {name}, "expected identifier");
         let literal = identifier_name.clone();
+
+        let mut size: usize = 1;
+
+        match_token!(tokens.peek(0)?,
+            Token::OpenSquare => {
+                tokens.next()?;
+                size = match_token!(tokens.next()?,
+                    Token::Int(val) => {
+                        if *val <= 0 {
+                            return Err(CompilationError::new("array size cant be negative or 0"))
+                        } 
+                        else { *val as usize } 
+                    }, "expected int");
+                match_token!(tokens.next()?, Token::ClosedSquare, "expected ]");
+            },
+            _ => {}
+        );
+
         match_token!(tokens.next()?, Token::Equals, "expected equals");
         let expr = Expression::parse(tokens, 0)?;
         match_token!(tokens.next()?, Token::EndStatement, "expected endstatement");
-        Ok(StatementNode::Declaration { expr, literal })
+        Ok(StatementNode::Declaration {
+            expr,
+            literal,
+            size,
+        })
     }
 
     fn parse_if(tokens: &mut Tokens) -> Result<Self, CompilationError> {
@@ -366,7 +411,8 @@ impl StatementNode {
 
     fn parse_scope(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
-        while match_token!(tokens.peek(0)?, Token::ClosedCurly => {
+        while match_token!(tokens.peek(0)?,
+        Token::ClosedCurly => {
             tokens.next()?;
             return Ok(StatementNode::Scope { statements });
         },
@@ -393,12 +439,23 @@ impl StatementNode {
     }
 
     fn parse_assignment(tokens: &mut Tokens, var_name: String) -> Result<Self, CompilationError> {
+        let mut index_expr: Option<Expression> = None;
+
+        match_token!(tokens.peek(0)?,
+        Token::OpenSquare => {
+            tokens.next()?;
+            index_expr = Some(Expression::parse(tokens, 0)?); 
+            match_token!(tokens.next()?, Token::ClosedSquare, "expected ]");
+        },
+        _=>{});
+        
         match_token!(tokens.next()?, Token::Equals => {
                 let expr = Expression::parse(tokens, 0)?;
                 match_token!(tokens.next()?,
                     Token::EndStatement => {Ok(StatementNode::Assignment {
                         literal: var_name,
                         expr,
+                        index_expr
                     })},
                 "expected end statement")
             },
@@ -408,7 +465,8 @@ impl StatementNode {
 
     fn to_asm(&self, parsing_context: &mut ParsingContext) -> Result<(), CompilationError> {
         match self {
-            StatementNode::Declaration { literal, expr } => {
+            StatementNode::Declaration { literal, expr , size} => {
+                println!("DECLARED {literal}");
                 expr.to_asm(parsing_context)?;
                 let name = literal.clone();
                 parsing_context.push_on_stack("rdi");
@@ -416,6 +474,10 @@ impl StatementNode {
                     return Err(CompilationError::new(
                         format!("Variable {literal} already exists").as_str(),
                     ));
+                }
+                for _ in 0..(size - 1)
+                {
+                    parsing_context.push_on_stack("rdi");
                 }
             }
             StatementNode::Return { expr } => {
@@ -460,12 +522,24 @@ impl StatementNode {
 
                 parsing_context.pop_loop_exit_label();
             }
-            StatementNode::Assignment { literal, expr } => {
-                expr.to_asm(parsing_context)?;
+            StatementNode::Assignment { literal, expr , index_expr} => {
                 let name = literal.clone();
                 if let Some(var) = parsing_context.get_var(&name) {
-                    parsing_context
-                        .push_line(format!("    mov [rbp - {}], rdi", var.stack_position).as_str())
+                    match index_expr {
+                        Some(index_expr) => {
+                            index_expr.to_asm(parsing_context)?;
+                            parsing_context.push_line("    mov rax, rdi");
+                            expr.to_asm(parsing_context)?;
+                            parsing_context
+                                .push_line(format!("    mov [rbp - {} + rax * 4], rdi", var.stack_position).as_str())
+                        }
+                        None => {
+                            expr.to_asm(parsing_context)?;
+                            parsing_context
+                                .push_line(format!("    mov [rbp - {}], rdi", var.stack_position).as_str())
+                        }
+                    }
+
                 } else {
                     return Err(CompilationError::new(
                         format!("Variable {literal} doesnt exist").as_str(),

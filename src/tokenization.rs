@@ -18,6 +18,8 @@ pub enum Token {
     ClosedBracket,
     OpenCurly,
     ClosedCurly,
+    OpenSquare,
+    ClosedSquare,
     If,
     LessThan,
     GreaterThan,
@@ -48,6 +50,8 @@ impl Clone for Token {
             Token::ClosedBracket => Token::ClosedBracket,
             Token::OpenCurly => Token::OpenCurly,
             Token::ClosedCurly => Token::ClosedCurly,
+            Token::OpenSquare => Token::OpenSquare,
+            Token::ClosedSquare => Token::ClosedSquare,
             Token::If => Token::If,
             Token::LessThan => Token::LessThan,
             Token::GreaterThan => Token::GreaterThan,
@@ -236,6 +240,8 @@ fn is_separator(grapheme: &str) -> bool {
             | ")"
             | "{"
             | "}"
+            | "["
+            | "]"
             | "<"
             | ">"
             | "\""
@@ -259,6 +265,8 @@ fn tokenize_separator(
         ")" => Some(Token::ClosedBracket),
         "{" => Some(Token::OpenCurly),
         "}" => Some(Token::ClosedCurly),
+        "[" => Some(Token::OpenSquare),
+        "]" => Some(Token::ClosedSquare),
         "<" => Some(Token::LessThan),
         ">" => Some(Token::GreaterThan),
         "," => Some(Token::Comma),
