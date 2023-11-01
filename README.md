@@ -24,6 +24,7 @@ This is a simple compiler written in Rust. It is designed for educational purpos
 - **Break Statement**: Break out of loops using the `break` statement.
 - **Scopes**: Enclose code in `{}` to create scopes.
 - **String Literals**: Assign string literals using double quotes `"`.
+- **Arrays**: Declaring and indexing into arrays with `[]`.
 
 ## TODO
 
@@ -58,4 +59,13 @@ fn Print(ptr, len){
 let hello_string = "Hello World!";
 
 return Print(hello_string, 12);
+```
+
+```cpp
+fn neki(x){
+    return x[1];
+}
+let b[2] = 0;
+b[1] = 10;
+return neki(b);
 ```
