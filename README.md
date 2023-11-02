@@ -25,6 +25,7 @@ This is a simple compiler written in Rust. It is designed for educational purpos
 - **Scopes**: Enclose code in `{}` to create scopes.
 - **String Literals**: Assign string literals using double quotes `"`.
 - **Arrays**: Declaring and indexing into arrays with `[]`.
+- **References**: Using references to get addresses of variables with `&`.
 
 ## TODO
 
@@ -68,4 +69,12 @@ fn neki(x){
 let b[2] = 0;
 b[1] = 10;
 return neki(b);
+```
+
+```cpp
+let x[2] = 65;
+x[1] = 66;
+x[2] = 67;
+print &x + 8;
+return &x;
 ```
