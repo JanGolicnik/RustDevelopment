@@ -85,3 +85,48 @@ let x = 65;
 let y = &x;
 return *y;
 ```
+
+```cpp
+let opening_string = "Tell me two numbers between 0-4 please      ";
+let first_input_prompt = "First number: ";
+let second_input_prompt = "Second number: ";
+
+let new_line = 10;
+
+let first_num_buf[2] = 0;
+let second_num_buf[2] = 0;
+
+    print opening_string, 39;
+    print &new_line, 1;
+
+
+while true {
+    print first_input_prompt, 14;
+    read &first_num_buf, 2;
+
+    print second_input_prompt, 15;
+    read &second_num_buf, 2;
+
+    let x = first_num_buf[0];
+    let y = second_num_buf[0];
+
+    x = x - 48;
+    y = y - 48;  
+
+    let xisok = false;
+    let yisok = false;
+
+    if x > 4 {
+        xisok = true;
+    }
+
+    if y > 4 {
+        yisok = true;
+    }
+
+    if (xisok + yisok) = 2 {
+    return x + y;
+    }
+
+}
+```

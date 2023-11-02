@@ -19,6 +19,7 @@ pub struct GlobalString {
 pub struct Scope {
     variables: HashMap<String, Variable>,
     parent: usize,
+    pub stack_size_at_creation: usize,
 }
 
 #[derive(Debug)]
@@ -55,7 +56,7 @@ impl ParsingContext {
         }
     }
 
-    pub fn _pop_from_stack(&mut self, register: &str) {
+    pub fn pop_from_stack(&mut self, register: &str) {
         self.push_line(format!("    pop {}", register).as_str());
         if let Some(p) = self.stack_pointers.last_mut() {
             p.stack_size -= 8;
@@ -130,15 +131,27 @@ impl ParsingContext {
             p.scopes.push(Scope {
                 variables: HashMap::new(),
                 parent: p.current_scope,
+                stack_size_at_creation: p.stack_size,
             });
             p.current_scope = p.scopes.len() - 1
         }
     }
 
     pub fn pop_scope(&mut self) {
+        let mut popped_scope: Option<Scope> = None;
+        let mut stack_size: usize = usize::MAX;
         if let Some(p) = self.stack_pointers.last_mut() {
             if let Some(scope) = p.scopes.pop() {
                 p.current_scope = scope.parent;
+                stack_size = p.stack_size;
+                popped_scope = Some(scope);
+            }
+        }
+
+        if let Some(scope) = popped_scope {
+            while stack_size > scope.stack_size_at_creation {
+                self.pop_from_stack("rsi");
+                stack_size -= 8;
             }
         }
     }

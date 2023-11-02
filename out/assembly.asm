@@ -13,10 +13,6 @@ _start:
     push rdi
     mov rdi, 0
     push rdi
-    push rdi
-    mov rdi, 0
-    push rdi
-    push rdi
     mov rdi, [rbp - 8]
     mov rsi, rdi
     mov rdi, 39
@@ -32,6 +28,10 @@ _start:
     mov rax, 1
     mov rdi, 1
     syscall
+LABEL1:
+    mov rdi, 1
+    cmp rdi, 0
+    je LABEL2
     mov rdi, [rbp - 16]
     mov rsi, rdi
     mov rdi, 14
@@ -42,7 +42,17 @@ _start:
     mov rdi, rbp
     sub rdi, 40
     mov rsi, rdi
-    mov rdi, 2
+    mov rdi, 1
+    mov rdx, rdi
+    mov rax, 0
+    mov rdi, 1
+    syscall
+    mov rdi, [rbp - 40]
+    push rdi
+    mov rdi, rbp
+    sub rdi, 40
+    mov rsi, rdi
+    mov rdi, 1
     mov rdx, rdi
     mov rax, 0
     mov rdi, 1
@@ -55,100 +65,108 @@ _start:
     mov rdi, 1
     syscall
     mov rdi, rbp
-    sub rdi, 56
+    sub rdi, 40
     mov rsi, rdi
-    mov rdi, 2
+    mov rdi, 1
     mov rdx, rdi
     mov rax, 0
     mov rdi, 1
     syscall
-    mov rdi, 0
-    mov rax, rdi
-    mov rdi, [rbp - 40 + rax * 4]
+    mov rdi, [rbp - 40]
     push rdi
-    mov rdi, 0
-    mov rax, rdi
-    mov rdi, [rbp - 56 + rax * 4]
-    push rdi
-    mov rdi, [rbp - 72]
+    mov rdi, rbp
+    sub rdi, 40
+    mov rsi, rdi
+    mov rdi, 1
+    mov rdx, rdi
+    mov rax, 0
+    mov rdi, 1
+    syscall
+    mov rdi, [rbp - 48]
     mov rax, rdi
     mov rdi, 48
     sub rax, rdi
     mov rdi, rax
-    mov [rbp - 72], rdi
-    mov rdi, [rbp - 80]
+    mov [rbp - 48], rdi
+    mov rdi, [rbp - 56]
     mov rax, rdi
     mov rdi, 48
     sub rax, rdi
     mov rdi, rax
-    mov [rbp - 80], rdi
-    mov rdi, 0
-    push rdi
-    mov rdi, 0
-    push rdi
-    mov rdi, [rbp - 72]
+    mov [rbp - 56], rdi
+    mov rdi, [rbp - 48]
     mov rax, rdi
     mov rdi, 4
     cmp rax, rdi
-    ja LABEL2
-LABEL3:
-    mov rdi, 0
-    jmp LABEL4
-LABEL2:
-    mov rdi, 1
-LABEL4:
-    cmp rdi, 0
-    je LABEL1
-    mov rdi, 1
-    mov [rbp - 88], rdi
-LABEL1:
-    mov rdi, [rbp - 80]
-    mov rax, rdi
-    mov rdi, 4
-    cmp rax, rdi
-    ja LABEL6
-LABEL7:
-    mov rdi, 0
-    jmp LABEL8
-LABEL6:
-    mov rdi, 1
-LABEL8:
-    cmp rdi, 0
-    je LABEL5
-    mov rdi, 1
-    mov [rbp - 96], rdi
+    jb LABEL4
 LABEL5:
-    mov rdi, [rbp - 88]
-    mov rax, rdi
-    mov rdi, [rbp - 96]
-    add rax, rdi 
-    mov rdi, rax
-    mov rax, rdi
     mov rdi, 0
-    cmp rax, rdi
-    je LABEL10
-LABEL11:
-    mov rdi, 0
-    jmp LABEL12
-LABEL10:
+    jmp LABEL6
+LABEL4:
     mov rdi, 1
-LABEL12:
+LABEL6:
     cmp rdi, 0
-    je LABEL9
-    mov rdi, 1
-    mov rax, 60
-    syscall
-LABEL9:
-    mov rdi, [rbp - 72]
+    je LABEL3
+    mov rdi, [rbp - 56]
     mov rax, rdi
-    mov rdi, [rbp - 80]
+    mov rdi, 4
+    cmp rax, rdi
+    jb LABEL8
+LABEL9:
+    mov rdi, 0
+    jmp LABEL10
+LABEL8:
+    mov rdi, 1
+LABEL10:
+    cmp rdi, 0
+    je LABEL7
+    mov rdi, [rbp - 48]
+    mov rax, rdi
+    mov rdi, [rbp - 56]
+    add rax, rdi 
+    mov rdi, rax
+    mov rax, rdi
+    mov rdi, 48
+    add rax, rdi 
+    mov rdi, rax
+    push rdi
+    mov rdi, rbp
+    sub rdi, 64
+    mov rsi, rdi
+    mov rdi, 1
+    mov rdx, rdi
+    mov rax, 1
+    mov rdi, 1
+    syscall
+    mov rdi, rbp
+    sub rdi, 32
+    mov rsi, rdi
+    mov rdi, 1
+    mov rdx, rdi
+    mov rax, 1
+    mov rdi, 1
+    syscall
+    mov rdi, [rbp - 48]
+    mov rax, rdi
+    mov rdi, [rbp - 56]
+    add rax, rdi 
+    mov rdi, rax
+    mov rax, rdi
+    mov rdi, 48
     add rax, rdi 
     mov rdi, rax
     mov rax, 60
     syscall
+    pop rsi
+LABEL7:
+LABEL3:
+    pop rsi
+    pop rsi
+    jmp LABEL1
+LABEL2:
 section .data
 STRING1:
-    db "Tell me two numbers between 0-4 please      ", 10
+    db "Enter two numbers please      ", 10
 STRING2:
     db "First number: ", 10
 STRING3:
