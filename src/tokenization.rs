@@ -30,6 +30,7 @@ pub enum Token {
     Function,
     Comma,
     And,
+    Read,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -63,6 +64,7 @@ impl Clone for Token {
             Token::Function => Token::Function,
             Token::Comma => Token::Comma,
             Token::And => Token::And,
+            Token::Read => Token::Read,
         }
     }
 }
@@ -216,6 +218,7 @@ fn tokenize_word(word: &str) -> Option<Token> {
         "while" => Some(Token::While),
         "break" => Some(Token::Break),
         "print" => Some(Token::Print),
+        "read" => Some(Token::Read),
         "fn" => Some(Token::Function),
         _ => str_to_token(word),
     }

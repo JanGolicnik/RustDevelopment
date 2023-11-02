@@ -55,7 +55,7 @@ impl ParsingContext {
         }
     }
 
-    pub fn pop_from_stack(&mut self, register: &str) {
+    pub fn _pop_from_stack(&mut self, register: &str) {
         self.push_line(format!("    pop {}", register).as_str());
         if let Some(p) = self.stack_pointers.last_mut() {
             p.stack_size -= 8;
@@ -94,6 +94,7 @@ impl ParsingContext {
     pub fn add_var(&mut self, name: String) -> Option<usize> {
         if let Some(p) = self.stack_pointers.last_mut() {
             if let Some(scope) = p.scopes.get_mut(p.current_scope) {
+                println!("added var {} to {}", name, p.stack_size);
                 if scope
                     .variables
                     .insert(

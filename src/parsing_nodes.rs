@@ -37,6 +37,11 @@ enum StatementNode {
     Break,
     Print {
         expr: Expression,
+        len: Expression,
+    },
+    Read {
+        ptr: Expression,
+        len: Expression,
     },
     Function {
         name: String,
@@ -296,9 +301,8 @@ impl Expression {
                 right,
             } => {
                 left.to_asm(parsing_context)?;
-                parsing_context.push_on_stack("rdi");
+                parsing_context.push_line("    mov rax, rdi");
                 right.to_asm(parsing_context)?;
-                parsing_context.pop_from_stack("rax");
 
                 match operator {
                     Token::Plus => {
@@ -322,7 +326,7 @@ impl Expression {
                         let false_label = parsing_context.new_label();
                         let label = parsing_context.new_label();
                         parsing_context.push_line("    cmp rax, rdi");
-                        parsing_context.push_line(format!("    jl {true_label}").as_str());
+                        parsing_context.push_line(format!("    jb {true_label}").as_str());
                         parsing_context.push_line(format!("{false_label}:").as_str());
                         parsing_context.push_line("    mov rdi, 0");
 
@@ -337,7 +341,7 @@ impl Expression {
                         let false_label = parsing_context.new_label();
                         let label = parsing_context.new_label();
                         parsing_context.push_line("    cmp rax, rdi");
-                        parsing_context.push_line(format!("    jg {true_label}").as_str());
+                        parsing_context.push_line(format!("    ja {true_label}").as_str());
                         parsing_context.push_line(format!("{false_label}:").as_str());
                         parsing_context.push_line("    mov rdi, 0");
                         parsing_context.push_line(format!("    jmp {label}").as_str());
@@ -386,8 +390,21 @@ impl StatementNode {
             }},
             Token::Print => {
                 let expr = Expression::parse(tokens, 0)?;
+                match_token!(tokens.next()?, Token::Comma, "expected comma");
+                let len = Expression::parse(tokens, 0)?;
                 match tokens.next()? {
-                    Token::EndStatement => StatementNode::Print { expr },
+                    Token::EndStatement => StatementNode::Print { expr, len },
+                    _ => {
+                        return Err(CompilationError::new("Expected ;"));
+                    }
+                }
+            },
+            Token::Read => {
+                let ptr = Expression::parse(tokens, 0)?;
+                match_token!(tokens.next()?, Token::Comma, "expected comma");
+                let len = Expression::parse(tokens, 0)?;
+                match tokens.next()? {
+                    Token::EndStatement => StatementNode::Read { ptr, len },
                     _ => {
                         return Err(CompilationError::new("Expected ;"));
                     }
@@ -622,12 +639,13 @@ impl StatementNode {
                     return Err(CompilationError::new("break without label"));
                 }
             }
-            StatementNode::Print { expr } => {
+            StatementNode::Print { expr, len } => {
                 expr.to_asm(parsing_context)?;
-                parsing_context.push_line("    mov rax, 1");
                 parsing_context.push_line("    mov rsi, rdi");
+                len.to_asm(parsing_context)?;
+                parsing_context.push_line("    mov rdx, rdi");
+                parsing_context.push_line("    mov rax, 1");
                 parsing_context.push_line("    mov rdi, 1");
-                parsing_context.push_line("    mov rdx, 1");
                 parsing_context.push_line("    syscall");
             }
             StatementNode::Function { name, scope, args } => {
@@ -654,6 +672,16 @@ impl StatementNode {
                     ));
                 }
             }
+            StatementNode::Read { ptr, len } => {
+                ptr.to_asm(parsing_context)?;
+                parsing_context.push_line("    mov rsi, rdi");
+                len.to_asm(parsing_context)?;
+                parsing_context.push_line("    mov rdx, rdi");
+                parsing_context.push_line("    mov rax, 0");
+                parsing_context.push_line("    mov rdi, 1");
+                parsing_context.push_line("    syscall");
+            }
+            
         }
         Ok(())
     }

@@ -26,6 +26,7 @@ This is a simple compiler written in Rust. It is designed for educational purpos
 - **String Literals**: Assign string literals using double quotes `"`.
 - **Arrays**: Declaring and indexing into arrays with `[]`.
 - **References**: Using references to get addresses of variables with `&`.
+- **Dereferences**: We have pointers at home with `*`.
 
 ## TODO
 
@@ -77,4 +78,10 @@ x[1] = 66;
 x[2] = 67;
 print &x + 8;
 return &x;
+```
+
+```cpp
+let x = 65;
+let y = &x;
+return *y;
 ```
