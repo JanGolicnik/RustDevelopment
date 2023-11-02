@@ -48,7 +48,7 @@ enum StatementNode {
 #[derive(Debug)]
 enum Term {
     Int(i32),
-    Identifier(String, Option<Box<Expression>>),
+    Identifier{name: String, index_expr: Option<Box<Expression>>, is_ref: bool},
     String(String),
     FunctionCall(String, Vec<Expression>),
 }
@@ -65,47 +65,75 @@ enum Expression {
 
 impl Term {
     fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
-        match_token!(tokens.next()?, "weird term",
-            Token::Int(int_token_val) => {Ok(Term::Int(*int_token_val))},
-            Token::String(val) => {Ok(Term::String(val.clone()))},
+        match_token!(tokens.peek(0)?, "weird term",
+            Token::Int(int_token_val) => { 
+                let int_token_val = *int_token_val;
+                tokens.next()?;
+                Ok(Term::Int(int_token_val))
+            },
+
+            Token::String(val) => { 
+                let val = val.clone(); 
+                tokens.next()?; 
+                Ok(Term::String( val ))
+            },
+                
+            Token::Identifier(_) | Token::And => {
+                Term::parse_identifier(tokens)
+            }
+        )
+    }
+
+    fn parse_identifier(tokens: &mut Tokens) -> Result<Self, CompilationError>{
+        let is_ref = match_token!(tokens.peek(0)?,
+            Token::And => {tokens.next()?; true}, 
+            _ => {false}
+        );
+        
+        let name = match_token!(tokens.next()?, "expected identifier. How did you get here?",
             Token::Identifier(name) => {
-                    let name = name.clone();
-                    match_token!(tokens.peek(0)?,
-                         Token::OpenBracket => {
-                            tokens.next()?;
-                            let mut expressions: Vec<Expression> = Vec::new();
+                name.clone()
+            }
+        );
 
-                            while match_token!(tokens.peek(0)?,
-                                Token::ClosedBracket => {
-                                    tokens.next()?;
-                                    false
-                                },
-                                Token::Comma => {
-                                    tokens.next()?;
-                                    true
-                                },
-                                _=> {
-                                    let expr = Expression::parse(tokens, 0)?;
-                                    expressions.push(expr);
-                                    true
-                                }
-                            ) {}
+        match_token!(tokens.peek(0)?,
+                Token::OpenBracket => {
+                tokens.next()?;
+                let mut expressions: Vec<Expression> = Vec::new();
 
-                            Ok(Term::FunctionCall(name, expressions))
-                        },
-                        Token::OpenSquare => {
-                            tokens.next()?;
-                            let expr = Expression::parse(tokens, 0)?;
-                            match_token!(tokens.next()?, 
-                                Token::ClosedSquare => {
-                                    Ok(Term::Identifier(name, Some(Box::new(expr))))
-                                }, "expected ]")
-                        },
-                        _ => {
-                            Ok(Term::Identifier(name, None))
-                        }
-                    )
+                while match_token!(tokens.peek(0)?,
+                    Token::ClosedBracket => {
+                        tokens.next()?;
+                        false
+                    },
+                    Token::Comma => {
+                        tokens.next()?;
+                        true
+                    },
+                    _=> {
+                        let expr = Expression::parse(tokens, 0)?;
+                        expressions.push(expr);
+                        true
+                    }
+                ) {}
+                
+                if is_ref {
+                    return Err(CompilationError::new("cannot reference a function"));
                 }
+
+                Ok(Term::FunctionCall(name, expressions))
+            },
+            Token::OpenSquare => {
+                tokens.next()?;
+                let expr = Expression::parse(tokens, 0)?;
+                match_token!(tokens.next()?, 
+                    Token::ClosedSquare => {
+                        Ok(Term::Identifier { name, index_expr: Some(Box::new(expr)), is_ref })
+                    }, "expected ]")
+            },
+            _ => {
+                Ok(Term::Identifier{name, index_expr: None, is_ref})
+            }
         )
     }
 
@@ -115,24 +143,38 @@ impl Term {
                 parsing_context.push_line(format!("    mov rdi, {}", val).as_str());
                 Ok(())
             }
-            Term::Identifier(name, index_expr) => {
+            Term::Identifier{name, index_expr, is_ref} => {
                 if let Some(var) = parsing_context.get_var(name) {
-                    let sign = if var.stack_position < 0 { "+" } else { "-" };
                     match index_expr {
                         Some(index_expr) => {
                             index_expr.to_asm(parsing_context)?;
                             parsing_context.push_line("    mov rax, rdi");
 
-                            parsing_context.push_line(
-                                format!("    mov rdi, [rbp {} {} + rax * 4]", sign, var.stack_position.abs())
-                                    .as_str(),
-                            );
+                            if *is_ref{
+                                parsing_context.push_line("    mov rdi, rbp");
+                                parsing_context.push_line(format!("    {} rdi, {}", if var.stack_position.is_negative() {"add"} else {"sub"}, var.stack_position).as_str());
+                                parsing_context.push_line("    mul rax, 4");
+                                parsing_context.push_line("    add rdi, rax");
+                            }else{
+                                let sign = if var.stack_position < 0 { "+" } else { "-" };
+                                parsing_context.push_line(
+                                    format!("    mov rdi, [rbp {} {} + rax * 4]", sign, var.stack_position.abs())
+                                        .as_str(),
+                                );
+                            }
+
                         }
                         None => {
-                            parsing_context.push_line(
-                                format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
-                                    .as_str(),
-                            );
+                            if *is_ref{
+                                parsing_context.push_line("    mov rdi, rbp");
+                                parsing_context.push_line(format!("    {} rdi, {}", if var.stack_position.is_negative() {"add"} else {"sub"}, var.stack_position).as_str());
+                            }else{
+                                let sign = if var.stack_position < 0 { "+" } else { "-" };
+                                parsing_context.push_line(
+                                    format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
+                                        .as_str(),
+                                );
+                            }
                         }
                     }
                     Ok(())

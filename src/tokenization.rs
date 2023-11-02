@@ -29,6 +29,7 @@ pub enum Token {
     String(String),
     Function,
     Comma,
+    And,
 }
 
 pub struct OperatorInfo(pub usize, pub bool);
@@ -61,6 +62,7 @@ impl Clone for Token {
             Token::String(val) => Token::String(val.clone()),
             Token::Function => Token::Function,
             Token::Comma => Token::Comma,
+            Token::And => Token::And,
         }
     }
 }
@@ -246,6 +248,7 @@ fn is_separator(grapheme: &str) -> bool {
             | ">"
             | "\""
             | ","
+            | "&"
     )
 }
 
@@ -270,6 +273,7 @@ fn tokenize_separator(
         "<" => Some(Token::LessThan),
         ">" => Some(Token::GreaterThan),
         "," => Some(Token::Comma),
+        "&" => Some(Token::And),
         "\"" => {
             let mut chars: Vec<&str> = Vec::new();
             *index += 1;

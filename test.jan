@@ -1,6 +1,5 @@
-fn neki(x){
-    return x[1];
-}
-let b[2] = 0;
-b[1] = 10;
-return neki(b);
+let x[2] = 65;
+x[1] = 66;
+x[2] = 67;
+print &x + 8;
+return &x;
