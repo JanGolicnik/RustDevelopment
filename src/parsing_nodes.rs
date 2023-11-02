@@ -46,9 +46,16 @@ enum StatementNode {
 }
 
 #[derive(Debug)]
+enum IdentifierValueType{
+    Reference,
+    Dereference,
+    Value
+}
+
+#[derive(Debug)]
 enum Term {
     Int(i32),
-    Identifier{name: String, index_expr: Option<Box<Expression>>, is_ref: bool},
+    Identifier{name: String, index_expr: Option<Box<Expression>>, is_ref: IdentifierValueType},
     String(String),
     FunctionCall(String, Vec<Expression>),
 }
@@ -78,7 +85,7 @@ impl Term {
                 Ok(Term::String( val ))
             },
                 
-            Token::Identifier(_) | Token::And => {
+            Token::Identifier(_) | Token::And | Token::Star => {
                 Term::parse_identifier(tokens)
             }
         )
@@ -86,8 +93,9 @@ impl Term {
 
     fn parse_identifier(tokens: &mut Tokens) -> Result<Self, CompilationError>{
         let is_ref = match_token!(tokens.peek(0)?,
-            Token::And => {tokens.next()?; true}, 
-            _ => {false}
+            Token::And => {tokens.next()?; IdentifierValueType::Reference}, 
+            Token::Star => {tokens.next()?; IdentifierValueType::Dereference}, 
+            _ => {IdentifierValueType::Value}
         );
         
         let name = match_token!(tokens.next()?, "expected identifier. How did you get here?",
@@ -117,7 +125,7 @@ impl Term {
                     }
                 ) {}
                 
-                if is_ref {
+                if matches!(is_ref, IdentifierValueType::Dereference | IdentifierValueType::Reference) {
                     return Err(CompilationError::new("cannot reference a function"));
                 }
 
@@ -150,30 +158,49 @@ impl Term {
                             index_expr.to_asm(parsing_context)?;
                             parsing_context.push_line("    mov rax, rdi");
 
-                            if *is_ref{
-                                parsing_context.push_line("    mov rdi, rbp");
-                                parsing_context.push_line(format!("    {} rdi, {}", if var.stack_position.is_negative() {"add"} else {"sub"}, var.stack_position).as_str());
-                                parsing_context.push_line("    mul rax, 4");
-                                parsing_context.push_line("    add rdi, rax");
-                            }else{
-                                let sign = if var.stack_position < 0 { "+" } else { "-" };
-                                parsing_context.push_line(
-                                    format!("    mov rdi, [rbp {} {} + rax * 4]", sign, var.stack_position.abs())
-                                        .as_str(),
-                                );
+                            match *is_ref{
+                                IdentifierValueType::Dereference => {
+                                    let sign = if var.stack_position < 0 { "+" } else { "-" };
+                                    parsing_context.push_line(
+                                        format!("    mov rdi, [rbp {} {} + rax * 4]", sign, var.stack_position.abs())
+                                            .as_str());
+                                    parsing_context.push_line("mov rdi, [rdi]");
+                                },
+                                IdentifierValueType::Reference => {
+                                    parsing_context.push_line("    mov rdi, rbp");
+                                    parsing_context.push_line(format!("    {} rdi, {}", if var.stack_position.is_negative() {"add"} else {"sub"}, var.stack_position).as_str());
+                                    parsing_context.push_line("    mul rax, 4");
+                                    parsing_context.push_line("    add rdi, rax");
+                                },
+                                IdentifierValueType::Value => {
+                                    let sign = if var.stack_position < 0 { "+" } else { "-" };
+                                    parsing_context.push_line(
+                                        format!("    mov rdi, [rbp {} {} + rax * 4]", sign, var.stack_position.abs())
+                                            .as_str(),
+                                    );
+                                }
                             }
-
                         }
                         None => {
-                            if *is_ref{
-                                parsing_context.push_line("    mov rdi, rbp");
-                                parsing_context.push_line(format!("    {} rdi, {}", if var.stack_position.is_negative() {"add"} else {"sub"}, var.stack_position).as_str());
-                            }else{
-                                let sign = if var.stack_position < 0 { "+" } else { "-" };
+                            match *is_ref{
+                                IdentifierValueType::Dereference => {
+                                    let sign = if var.stack_position < 0 { "+" } else { "-" };
+                                    parsing_context.push_line(
+                                        format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
+                                            .as_str());
+                                    parsing_context.push_line("mov rdi, [rdi]");
+                                },
+                                IdentifierValueType::Reference => {
+                                     parsing_context.push_line("    mov rdi, rbp");
+                                    parsing_context.push_line(format!("    {} rdi, {}", if var.stack_position.is_negative() {"add"} else {"sub"}, var.stack_position).as_str());
+                                },
+                                IdentifierValueType::Value => {
+                                    let sign = if var.stack_position < 0 { "+" } else { "-" };
                                 parsing_context.push_line(
                                     format!("    mov rdi, [rbp {} {}]", sign, var.stack_position.abs())
                                         .as_str(),
                                 );
+                                }
                             }
                         }
                     }

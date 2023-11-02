@@ -1,5 +1,3 @@
-let x[2] = 65;
-x[1] = 66;
-x[2] = 67;
-print &x + 8;
-return &x;
+let x = 65;
+let y = &x;
+return *y;
