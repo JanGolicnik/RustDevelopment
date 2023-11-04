@@ -1,8 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::compilation_error::CompilationError;
-use crate::parsing_nodes::ProgramNode;
+use crate::parsing::nodes::program_node::ProgramNode;
 use crate::tokenization::Tokens;
+
+pub mod nodes;
 
 #[derive(Debug)]
 pub struct Variable {

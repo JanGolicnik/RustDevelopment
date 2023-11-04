@@ -4,12 +4,11 @@ use std::{
     process::{Command, Output},
 };
 
-use parsing::parse;
+use crate::parsing::parse;
 use tokenization::tokenize;
 
 mod compilation_error;
 mod parsing;
-mod parsing_nodes;
 mod tokenization;
 fn main() {
     let args: Vec<String> = env::args().collect();
