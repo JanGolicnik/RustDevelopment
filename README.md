@@ -34,6 +34,11 @@ This is a simple compiler written in Rust. It is designed for educational purpos
 - Accepting user input
 - ??? (Please provide more details on future plans)
 
+## Prerequisites
+
+- `rustup + cargo`
+- `nasm`
+
 ## Examples
 
 - Showing off features
