@@ -1,7 +1,7 @@
 use super::expression::Expression;
 use super::super::ParsingContext;
 use super::super::CompilationError;
-use super::super::super::tokenization::{Tokens, tokens::Token};
+use super::super::super::tokenization::{Tokens, token::Token};
 use crate::match_token;
 
 #[derive(Debug)]

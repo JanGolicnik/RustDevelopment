@@ -1,4 +1,4 @@
-use super::super::super::tokenization::{Tokens, tokens::Token};
+use super::super::super::tokenization::{Tokens, token::Token};
 use super::super::{ParsingContext, CompilationError};
 use super::expression::Expression;
 use crate::match_token;

@@ -1,9 +1,9 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::compilation_error::CompilationError;
-use super::tokenization::tokens::Token;
+use super::tokenization::token::Token;
 
-pub mod tokens;
+pub mod token;
 
 #[macro_export]
 macro_rules! match_token {
@@ -46,47 +46,47 @@ macro_rules! match_token {
 pub struct Tokens {
     tokens: Vec<Token>,
     index: usize,
+    line_num: usize,
 }
 
 impl Tokens {
     pub fn new(tokens: Vec<Token>) -> Self {
-        Tokens { tokens, index: 0 }
+        Tokens { tokens, index: 0, line_num: 1 }
     }
 
     pub fn next(&mut self) -> Result<&Token, CompilationError> {
         self.index += 1;
 
-        if let Some(token) = self.tokens.get(self.index - 1) {
-            Ok(token)
-        } else {
-            Err(CompilationError::new("Missing Token"))
+        loop{
+            match self.tokens.get(self.index - 1) {
+                Some(t) => match t {
+                    Token::EndLine => self.line_num += 1,
+                    _=> return Ok(t),
+                }
+                None=> return Err(CompilationError::new("Missing Token")),
+            }
+            self.index += 1;
         }
     }
 
-    pub fn peek(&mut self, offset: usize) -> Result<&Token, CompilationError> {
-        if let Some(token) = self.tokens.get(self.index + offset) {
-            Ok(token)
-        } else {
-            Err(CompilationError::new("Missing Token"))
+    pub fn peek(&mut self, mut offset: usize) -> Result<&Token, CompilationError> {
+        loop{
+            match self.tokens.get(self.index + offset) {
+                Some(t) => match t {
+                    Token::EndLine => {},
+                    _=> return Ok(t),
+                }
+                None=> return Err(CompilationError::new("Missing Token")),
+            }
+            offset += 1;
         }
     }
 
-    pub fn _peek_back(&mut self, offset: usize) -> Result<&Token, CompilationError> {
-        if let Some(token) = self.tokens.get(self.index - offset) {
-            Ok(token)
-        } else {
-            Err(CompilationError::new("Missing Token"))
-        }
-    }
-
-    pub fn _tokens(&self) -> &Vec<Token> {
-        &self.tokens
-    }
-
-    pub fn _reset(&mut self) {
-        self.index = 0;
+    pub fn get_line_num(&self) -> usize {
+        self.line_num
     }
 }
+
 pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
     let mut tokens: Vec<Token> = Vec::new();
 
@@ -95,6 +95,7 @@ pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
     let file_len = file.graphemes(true).count();
     let graphemes: Vec<&str> = file.graphemes(true).collect();
     let mut index = 0;
+    let mut line_num = 0;
     while let Some(grapheme) = graphemes.get(index) {
         if index + 1 == file_len || is_separator(grapheme) {
             let word: String = file
@@ -113,12 +114,16 @@ pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
                             file[last_token_index..index].graphemes(true).as_str()
                         )
                         .as_str(),
-                    ));
+                    ).add_line_num(line_num).clone());
                 }
             }
 
             if let Some(separator_token) = tokenize_separator(grapheme, &graphemes[..], &mut index)?
             {
+                match separator_token {
+                    Token::EndLine=>line_num+=1,
+                    _=>{}
+                }
                 tokens.push(separator_token);
             }
 
@@ -157,7 +162,8 @@ fn str_to_token(chars: &str) -> Option<Token> {
 fn is_separator(grapheme: &str) -> bool {
     matches!(
         grapheme,
-        ";" | " "
+            ";"
+            | " "
             | "="
             | "\n"
             | "+"
@@ -184,6 +190,7 @@ fn tokenize_separator(
     index: &mut usize,
 ) -> Result<Option<Token>, CompilationError> {
     Ok(match grapheme {
+        "\n" => Some(Token::EndLine),
         ";" => Some(Token::EndStatement),
         "=" => Some(Token::Equals),
         "+" => Some(Token::Plus),

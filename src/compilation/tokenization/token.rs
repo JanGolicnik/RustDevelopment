@@ -1,5 +1,6 @@
 #[derive(Debug)]
 pub enum Token {
+    EndLine,
     Return,
     Int(i32),
     Identifier(String), // Change the representation to String
@@ -34,6 +35,7 @@ pub struct OperatorInfo(pub usize, pub bool);
 impl Clone for Token {
     fn clone(&self) -> Self {
         match self {
+            Token::EndLine => Token::EndLine,
             Token::Return => Token::Return,
             Token::Int(value) => Token::Int(*value),
             Token::Identifier(identifier) => Token::Identifier(identifier.clone()), // Manually clone the String
@@ -77,3 +79,4 @@ impl Token {
         }
     }
 }
+

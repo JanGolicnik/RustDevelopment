@@ -246,9 +246,12 @@ pub fn parse(tokens: &mut Tokens) -> Result<String, CompilationError> {
 
     parsing_context.push_scope();
 
-    let root = ProgramNode::parse(tokens)?;
+    match ProgramNode::parse(tokens) {
+        Ok(root)=>{
+            root.to_asm(&mut parsing_context)?;
+            Ok(parsing_context.output)
+        }
+        Err(mut e) => Err(e.add_line_num(tokens.get_line_num()).clone()),
+    }
 
-    root.to_asm(&mut parsing_context)?;
-
-    Ok(parsing_context.output)
 }

@@ -7,7 +7,6 @@ pub struct ProgramNode {
     statements: Vec<StatementNode>,
 }
 
-
 impl ProgramNode {
     pub fn parse(tokens: &mut Tokens) -> Result<Self, CompilationError> {
         let mut statements: Vec<StatementNode> = Vec::new();
