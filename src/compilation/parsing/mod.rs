@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::compilation_error::CompilationError;
 use super::parsing::nodes::program_node::ProgramNode;
-use super::tokenization::Tokens;
+use super::tokenization::tokens::Tokens;
 
 pub mod nodes;
 

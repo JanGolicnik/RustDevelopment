@@ -1,4 +1,4 @@
-use super::super::super::tokenization::Tokens;
+use super::super::super::tokenization::tokens::Tokens;
 use super::super::CompilationError;
 use super::super::ParsingContext;
 use super::statement_node::StatementNode;

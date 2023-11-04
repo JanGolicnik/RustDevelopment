@@ -1,4 +1,4 @@
-use super::super::super::tokenization::{token::{Token, OperatorInfo}, Tokens};
+use super::super::super::tokenization::{token::{Token, OperatorInfo}, tokens::Tokens};
 use super::super::{CompilationError, ParsingContext};
 use crate::match_token;
 use super::term::Term;

@@ -1,91 +1,11 @@
 use unicode_segmentation::UnicodeSegmentation;
 
 use super::compilation_error::CompilationError;
-use super::tokenization::token::Token;
+use self::{token::Token, tokens::Tokens};
 
 pub mod token;
-
-#[macro_export]
-macro_rules! match_token {
-    ($token:expr, $token_type:pat, $err:literal) => {
-        let token__ = $token;
-        if matches!(token__, $token_type) {
-            token__
-        } else {
-            return Err(CompilationError::new($err));
-        }
-    };
-    ($token:expr, $token_type:pat => $token_type_block:block, $err:literal) => {{
-    let token__ = $token;
-    match token__ {
-        $token_type => $token_type_block,
-        _ => return Err(CompilationError::new($err)),
-    }
-    }};
-    ($token:expr, $err:literal, $( $token_type:pat => $token_type_block:block),*) => {{
-        let token__ = $token;
-        match token__ {
-            $($token_type => $token_type_block,)*
-            _ => return Err(CompilationError::new($err)),
-        }
-    }};
-    ($token:expr, $( $token_type:pat => $token_type_block:block),*) => {{
-        let token__ = $token;
-        match token__ {
-            $($token_type => $token_type_block,)*
-        }
-    }};
-    ($token:expr, $token_type:pat => $token_type_block:block) => {{
-        let token__ = $token;
-        match token__ {
-            $token_type => $token_type_block,
-        }
-    }};
-}
-
-pub struct Tokens {
-    tokens: Vec<Token>,
-    index: usize,
-    line_num: usize,
-}
-
-impl Tokens {
-    pub fn new(tokens: Vec<Token>) -> Self {
-        Tokens { tokens, index: 0, line_num: 1 }
-    }
-
-    pub fn next(&mut self) -> Result<&Token, CompilationError> {
-        self.index += 1;
-
-        loop{
-            match self.tokens.get(self.index - 1) {
-                Some(t) => match t {
-                    Token::EndLine => self.line_num += 1,
-                    _=> return Ok(t),
-                }
-                None=> return Err(CompilationError::new("Missing Token")),
-            }
-            self.index += 1;
-        }
-    }
-
-    pub fn peek(&mut self, mut offset: usize) -> Result<&Token, CompilationError> {
-        loop{
-            match self.tokens.get(self.index + offset) {
-                Some(t) => match t {
-                    Token::EndLine => {},
-                    _=> return Ok(t),
-                }
-                None=> return Err(CompilationError::new("Missing Token")),
-            }
-            offset += 1;
-        }
-    }
-
-    pub fn get_line_num(&self) -> usize {
-        self.line_num
-    }
-}
+pub mod tokens;
+pub mod match_token;
 
 pub fn tokenize(file: &String) -> Result<Tokens, CompilationError> {
     let mut tokens: Vec<Token> = Vec::new();
