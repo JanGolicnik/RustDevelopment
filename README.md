@@ -31,8 +31,8 @@ This is a simple compiler written in Rust. It is designed for educational purpos
 
 ## TODO
 
-- Accepting user input
-- ??? (Please provide more details on future plans)
+- Better assembly generation
+- General usability
 
 ## Prerequisites
 
