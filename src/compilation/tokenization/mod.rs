@@ -1,7 +1,7 @@
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::compilation_error::CompilationError;
-use crate::tokenization::tokens::Token;
+use super::compilation_error::CompilationError;
+use super::tokenization::tokens::Token;
 
 pub mod tokens;
 

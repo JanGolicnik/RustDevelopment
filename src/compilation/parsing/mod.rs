@@ -1,8 +1,8 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::compilation_error::CompilationError;
-use crate::parsing::nodes::program_node::ProgramNode;
-use crate::tokenization::Tokens;
+use super::compilation_error::CompilationError;
+use super::parsing::nodes::program_node::ProgramNode;
+use super::tokenization::Tokens;
 
 pub mod nodes;
 

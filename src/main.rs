@@ -4,12 +4,10 @@ use std::{
     process::{Command, Output},
 };
 
-use crate::parsing::parse;
-use tokenization::tokenize;
+use compilation::compile_to_asm;
 
-mod compilation_error;
-mod parsing;
-mod tokenization;
+mod compilation;
+
 fn main() {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
@@ -20,13 +18,12 @@ fn main() {
     let file_path = Path::new(&args[1]);
     let file_string = fs::read_to_string(file_path).expect("Unable to read file!");
 
-    match tokenize(&file_string) {
-        Ok(mut tokens) => match parse(&mut tokens) {
-            Ok(output) => assemble(output),
-            Err(e) => eprintln!("{}", e),
-        },
-        Err(e) => eprintln!("{}", e),
+    match compile_to_asm(&file_string) {
+        Ok(asm) => assemble(asm),
+        Err(e) => eprintln!("{e}")
     }
+
+
 }
 
 fn assemble(code: String) {
