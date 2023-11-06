@@ -1,52 +1,66 @@
-use bevy::{prelude::*, render::{mesh::Indices, render_resource::PrimitiveTopology}};
+use bevy::{prelude::*, render::{mesh::Indices, render_resource::PrimitiveTopology}, utils::{HashMap, HashSet}};
 use noise::{Perlin, NoiseFn};
+use bevy_flycam::prelude::*;
 
 const CHUNK_X: usize = 16;
 const CHUNK_Z: usize = 16;
 const CHUNK_Y: usize = 16;
 
-struct Chunk([bool; CHUNK_X * CHUNK_Y * CHUNK_Z]);
+const WORLD_SIZE: usize = 21;
 
-impl Chunk{
-    pub fn new(val: bool) -> Self{
-        Chunk([val; CHUNK_X * CHUNK_Y * CHUNK_Z])
-    }
-    pub fn set(&mut self, mut x: usize, mut y: usize, mut z: usize, val: bool) {
-        if x >= CHUNK_X { x = CHUNK_X - 1; }
-        if y >= CHUNK_Y { y = CHUNK_Y - 1; }
-        if z >= CHUNK_Z { z = CHUNK_Z - 1; }
-        self.0[x + z * CHUNK_X + y * CHUNK_X * CHUNK_Y] = val;
-    }
-    pub fn get(&self, x: usize, y: usize, z: usize) -> bool {
-        if x >= CHUNK_X { return false; }
-        if y >= CHUNK_Y { return false; }
-        if z >= CHUNK_Z { return false; }
-        self.0[x + z * CHUNK_X + y * CHUNK_X * CHUNK_Y]
-    }
+#[derive(Component, Clone, Eq, PartialEq, Hash, Copy)]
+struct Chunk(i32, i32);
+
+#[derive(Component)]
+struct Player;
+
+#[derive(Resource)]
+struct ChunkQueue{
+    spawn_queue: Vec<Chunk>,
+    despawn_queue: Vec<(Entity, Chunk)>,
+    chunks: HashSet<Chunk>,
 }
 
 fn main() {
-    App::new().add_plugins(DefaultPlugins).add_systems(Startup, setup).add_systems(Update, update_camera).run();
+    App::new()
+    .add_plugins((DefaultPlugins, NoCameraPlayerPlugin))
+    .insert_resource(ChunkQueue{spawn_queue: Vec::new(), despawn_queue: Vec::new(), chunks: HashSet::new()})
+    .insert_resource(MovementSettings {
+        speed: 120.0,
+        sensitivity: 0.00015,
+    })
+    .add_systems(Startup, setup)
+    .add_systems(Update, 
+        (
+            update_lights, 
+            spawn_chunks,
+            update_chunk_queue.after(spawn_chunks)
+        )
+    )
+    .run();
 }
 
 fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>){
+    // for x in 0..WORLD_SIZE {
+    //     for z in 0..WORLD_SIZE {
+    //         let x = x as i32;
+    //         let z = z as i32;
+    //         commands.spawn((PbrBundle {
+    //             mesh: meshes.add(create_chunk_mesh(x, z)),
+    //             material: materials.add(Color::rgb(0.35, 0.7, 0.6).into()),
+    //             ..default()
+    //         }, Chunk(x, z)));
+    //     }
+    // }
 
-    for x in -2..3 {
-        for z in -2..3 {
-
-            commands.spawn(PbrBundle {
-                mesh: meshes.add(chunk_mesh(x, z)),
-                material: materials.add(Color::rgb(0.35, 0.7, 0.6).into()),
-                ..default()
-            });
-
-        }
-    }
-
-    commands.spawn(Camera3dBundle {
-        transform: Transform::from_xyz(-20., 20., 20.).looking_at(Vec3::ZERO, Vec3::Y),
-        ..default()
-    });
+    commands.spawn((
+        Camera3dBundle {
+            transform: Transform::from_xyz(0.0, CHUNK_Y as f32, 0.5),
+            ..default()
+        },
+        FlyCam,
+        Player
+    ));
 
     commands.spawn(DirectionalLightBundle {
         directional_light: DirectionalLight {
@@ -59,7 +73,28 @@ fn setup(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>, mut materials
     });
 }
 
-fn chunk_mesh(mut position_x: i32, mut position_z: i32) -> Mesh {
+fn create_chunk_mesh(mut position_x: i32, mut position_z: i32) -> Mesh {
+
+    struct Chunk([bool; CHUNK_X * CHUNK_Y * CHUNK_Z]);
+
+    impl Chunk{
+        pub fn new(val: bool) -> Self{
+            Chunk([val; CHUNK_X * CHUNK_Y * CHUNK_Z])
+        }
+        pub fn set(&mut self, mut x: usize, mut y: usize, mut z: usize, val: bool) {
+            if x >= CHUNK_X { x = CHUNK_X - 1; }
+            if y >= CHUNK_Y { y = CHUNK_Y - 1; }
+            if z >= CHUNK_Z { z = CHUNK_Z - 1; }
+            self.0[x + z * CHUNK_X + y * CHUNK_X * CHUNK_Y] = val;
+        }
+        pub fn get(&self, x: usize, y: usize, z: usize) -> bool {
+            if x >= CHUNK_X { return false; }
+            if y >= CHUNK_Y { return false; }
+            if z >= CHUNK_Z { return false; }
+            self.0[x + z * CHUNK_X + y * CHUNK_X * CHUNK_Y]
+        }
+    }
+
     position_x *= CHUNK_X as i32;
     position_z *= CHUNK_Z as i32;
 
@@ -167,8 +202,8 @@ fn chunk_mesh(mut position_x: i32, mut position_z: i32) -> Mesh {
             for z in 0..CHUNK_Z {
                 if chunk.get(x, y, z) {
                     let fy = y as f32;
-                    let fx = position_x as f32 + x as f32; 
-                    let fz = position_z as f32 + z as f32;
+                    let fx = position_x as f32 + x as f32 - CHUNK_X as f32 * 0.5; 
+                    let fz = position_z as f32 + z as f32 - CHUNK_Z as f32 * 0.5;
 
                     if x == 15 || !chunk.get(x + 1, y, z) {
                         add_plane(  fx + 0.5, fy - 0.5, fz - 0.5,
@@ -217,28 +252,79 @@ fn chunk_mesh(mut position_x: i32, mut position_z: i32) -> Mesh {
     mesh.set_indices(Some(Indices::U32(indices)));
     return mesh;
 
-    // let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-
-    // mesh.insert_attribute(
-    //     Mesh::ATTRIBUTE_POSITION,
-    //     vec![[0., 0., 0.], [0., 0., -2.], [1., 0., 0.]],
-    // );
-    // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, vec![[0., 1., 0.]; 3]);
-    // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, vec![[0., 0.]; 3]);
-    
-    // mesh.set_indices(Some(Indices::U32(vec![0, 2, 1])));
-
-    // mesh
 } 
 
 
-fn update_camera(mut camera_query: Query<&mut Transform, (With<Camera>, Without<DirectionalLight>)>, mut light_query: Query<&mut Transform, With<DirectionalLight>>, time: Res<Time>){
+fn update_lights(mut light_query: Query<&mut Transform, With<DirectionalLight>>, time: Res<Time>){
     let elapsed_time = time.elapsed().as_secs_f32();
-    for mut transform in camera_query.iter_mut() {
-        *transform = Transform::from_xyz(f32::sin(elapsed_time * 0.3) * 50., 40., f32::cos(elapsed_time * 0.3) * 40.).looking_at(Vec3::ZERO, Vec3::Y);
-    }
 
     for mut transform in light_query.iter_mut() {
-        *transform = Transform::from_xyz(f32::sin(elapsed_time), f32::cos(elapsed_time), 0.).looking_at(Vec3::ZERO, Vec3::Y);
+        *transform = Transform::from_xyz(f32::sin(elapsed_time), f32::cos(elapsed_time).abs(), 0.).looking_at(Vec3::ZERO, Vec3::Y);
     }
+}
+
+fn spawn_chunks(mut chunk_q: ResMut<ChunkQueue>, player_query: Query<&Transform, With<Player>>, chunk_query: Query<(&Chunk, Entity), (With<Chunk>, Without<Player>)>) {
+
+    let player_transform = player_query.single();
+
+    const RENDER_DIST_X: f32 = WORLD_SIZE as f32 * 0.5 * CHUNK_X as f32;
+    const RENDER_DIST_Z: f32 = WORLD_SIZE as f32 * 0.5 * CHUNK_Z as f32;
+
+    const HALF_CHUNK_X: f32 = CHUNK_X as f32 * 0.5;
+    const HALF_CHUNK_Z: f32 = CHUNK_Z as f32 * 0.5;
+
+    for (chunk, entity) in chunk_query.iter(){
+        let chunk_world_x = chunk.0 as f32 * CHUNK_X as f32;
+        let chunk_world_z = chunk.1 as f32 * CHUNK_Z as f32;
+
+        let dist_x = chunk_world_x - player_transform.translation.x; 
+        let dist_z = chunk_world_z - player_transform.translation.z; 
+        
+        if  dist_x.abs() > RENDER_DIST_X ||
+            dist_z.abs() > RENDER_DIST_Z {
+
+            chunk_q.despawn_queue.push((entity, *chunk));
+        }
+    }
+
+    let lower = (WORLD_SIZE as f32 * -0.5).ceil() as i32;
+    let upper = (WORLD_SIZE as f32 * 0.5).ceil() as i32;
+    for x in lower..upper {
+        for z in lower..upper {
+        
+            let x = x as f32 + player_transform.translation.x / CHUNK_X as f32; 
+            let z = z as f32 + player_transform.translation.z / CHUNK_Z as f32; 
+
+            chunk_q.spawn_queue.push(Chunk(x as i32, z as i32));
+        }
+    }
+}
+
+fn update_chunk_queue(mut commands: Commands, mut chunk_q: ResMut<ChunkQueue>, mut meshes: ResMut<Assets<Mesh>>, mut materials: ResMut<Assets<StandardMaterial>>){
+    let spawn_queue = chunk_q.spawn_queue.clone();
+
+    for c in &spawn_queue {
+        let x = c.0 as i32;
+        let z = c.1 as i32;
+
+        if !chunk_q.chunks.contains(&Chunk(x,z)) {
+            commands.spawn((PbrBundle {
+                mesh: meshes.add(create_chunk_mesh(x, z)),
+                material: materials.add(Color::rgb(0.35, 0.7, 0.6).into()),
+                ..default()
+            }, Chunk(x, z)));
+    
+            chunk_q.chunks.insert(Chunk(x,z));
+        }
+    }
+
+    for (entity, chunk) in chunk_q.despawn_queue.clone() {
+        if !spawn_queue.contains(&chunk){
+            commands.entity(entity).despawn();
+            chunk_q.chunks.remove(&chunk);
+        }
+    }
+
+    chunk_q.spawn_queue.clear();
+    chunk_q.despawn_queue.clear();
 }
