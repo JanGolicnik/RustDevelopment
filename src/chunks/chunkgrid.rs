@@ -1,7 +1,8 @@
 use bevy::{render::{render_resource::PrimitiveTopology, mesh::Indices}, prelude::*};
 use noise::{Perlin, NoiseFn};
-
 use super::{CHUNK_SIZE, CHUNK_VOLUME};
+
+const NOISE_SCALE: f64 = 1.0 / 32.0;
 
 #[derive(Debug)]
 pub struct ChunkGrid(pub [bool; CHUNK_VOLUME]);
@@ -22,10 +23,7 @@ impl ChunkGrid{
         pos[0] + pos[1] * CHUNK_SIZE + pos[2] * CHUNK_SIZE * CHUNK_SIZE
     }
         
-    pub fn generate(&mut self, mut position_x: i32, mut position_y: i32, mut position_z: i32){
-        position_x *= CHUNK_SIZE as i32;
-        position_y *= CHUNK_SIZE as i32;
-        position_z *= CHUNK_SIZE as i32;
+    pub fn generate(&mut self, pos: [i32; 3]){
 
         let noise = Perlin::new(5);
 
@@ -34,12 +32,19 @@ impl ChunkGrid{
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
-                    let fx = position_x as f64 + x as f64; 
-                    let fy = position_y as f64 + y as f64; 
-                    let fz = position_z as f64 + z as f64;
+                    let world_x = (pos[0] as f64 + x as f64) * NOISE_SCALE; 
+                    let mut world_y = (pos[1] as f64 + y as f64) * NOISE_SCALE; 
+                    let world_z = (pos[2] as f64 + z as f64) * NOISE_SCALE;
                     
-                    let noise_val = noise.get([fx as f64 / 16., fy as f64 / 16., fz as f64 / 16.]);
-                    volume_map[ChunkGrid::pos_to_index(&[x,y,z])] = (noise_val + 1.) / 2.;
+                    let mut noise_val = 1.0;
+
+                    if world_y > 0.0 {
+                        noise_val = noise.get([world_x, world_y, world_z]);
+                        noise_val = (noise_val + 1.0) / 2.0;
+                        noise_val *= f64::log(world_y * 50.0 + 1.0, 100.0).powf(-1.0);
+                    }
+                    
+                    volume_map[ChunkGrid::pos_to_index(&[x,y,z])] = noise_val;
                 }
             }
         }
@@ -49,8 +54,8 @@ impl ChunkGrid{
                 for z in 0..CHUNK_SIZE {
                     let volume = volume_map[ChunkGrid::pos_to_index(&[x,y,z])];
                     if volume > 0.85 {
-                    self.set(x, y, z, true);
-                }
+                        self.set(x, y, z, true);
+                    }
                 }
             }
         }

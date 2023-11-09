@@ -1,6 +1,5 @@
 use bevy::{prelude::*, utils::HashMap};
-
-use super::{generation::ChunkGrid, Chunk, chunkqueue::ChunkQueue};
+use super::{chunkgrid::ChunkGrid, Chunk};
 use super::{CHUNK_SIZE, HALF_CHUNK_SIZE};
 
 #[derive(Resource)]
@@ -9,7 +8,7 @@ pub struct ChunkMap {
 }
 
 impl ChunkMap {
-    fn remesh(&self, chunk: &Chunk) -> Option<Mesh> {
+    pub fn remesh(&self, chunk: &Chunk) -> Option<Mesh> {
         if let Some(chunkgrid) = self.chunks.get(chunk){
 
             let x = chunk.0[0];
@@ -30,12 +29,12 @@ impl ChunkMap {
         None
     }
 
-    fn regen(&mut self, chunk: &Chunk) {
+    pub fn regen(&mut self, chunk: &Chunk) {
         if !self.chunks.contains_key(chunk){
             self.chunks.insert(*chunk, ChunkGrid::new(false));
         }
         if let Some(chunkgrid) = self.chunks.get_mut(chunk){
-            chunkgrid.generate(chunk.0[0], chunk.0[1], chunk.0[2]);
+            chunkgrid.generate(Self::chunk_to_world_coords(chunk));
         }
     }
     
@@ -83,23 +82,3 @@ impl ChunkMap {
     }
 }
 
-pub fn remesh_chunks(mut commands: Commands, chunkmap: Res<ChunkMap>, mut chunk_q: ResMut<ChunkQueue>, mut meshes: ResMut<Assets<Mesh>>){
-    for chunk in &chunk_q.remesh_queue {
-        if let Some(entity) = chunk_q.spawned_chunks.get(chunk){
-            if let Some(mesh) = chunkmap.remesh(&chunk){
-                commands.entity(*entity).try_insert(meshes.add(mesh));
-            }
-        }
-    }
-
-    chunk_q.remesh_queue.clear();
-}
-
-pub fn regen_chunks(mut chunkmap: ResMut<ChunkMap>, mut chunk_q: ResMut<ChunkQueue>){
-
-    for chunk in &chunk_q.regen_queue {
-        chunkmap.regen(&chunk);
-    }
-
-    chunk_q.regen_queue.clear();
-}
