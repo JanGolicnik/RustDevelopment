@@ -2,6 +2,7 @@ use bevy::{prelude::*, utils::HashMap};
 
 use crate::Player;
 
+use super::chunkmap::ChunkMap;
 use super::{Chunk, utils::NEIGHBOUR_OFFSETS, RENDER_DIST};
 use super::{WORLD_SIZE, CHUNK_SIZE};
 
@@ -17,24 +18,20 @@ pub struct ChunkQueue{
 pub fn spawn_chunks(mut commands: Commands, mut chunk_q: ResMut<ChunkQueue>, mut materials: ResMut<Assets<StandardMaterial>>){
     let spawn_queue = chunk_q.spawn_queue.clone();
 
-    for c in &spawn_queue {
-        let x = c.0[0] as i32;
-        let y = c.0[1] as i32;
-        let z = c.0[2] as i32;
-
-        if !chunk_q.spawned_chunks.contains_key(&Chunk([x, y, z])) {
+    for chunk in &spawn_queue {
+        if !chunk_q.spawned_chunks.contains_key(chunk) {
             
             let spawned_chunk_entity = commands.spawn((PbrBundle {
                 material: materials.add(Color::rgb(0.35, 0.7, 0.6).into()),
                 ..default()
-            }, Chunk([x, y, z]))).id();
+            }, Chunk::from(*chunk))).id();
     
-            chunk_q.spawned_chunks.insert(Chunk([x, y, z]), spawned_chunk_entity);
+            chunk_q.spawned_chunks.insert(*chunk, spawned_chunk_entity);
 
             for offset in NEIGHBOUR_OFFSETS {
-                let x = x + offset[0];
-                let y = y + offset[1];
-                let z = z + offset[2];
+                let x = chunk.0[0] + offset[0];
+                let y = chunk.0[1] + offset[1];
+                let z = chunk.0[2] + offset[2];
                 let chunk = Chunk([x, y, z]);
                 if chunk_q.spawned_chunks.contains_key(&chunk) {
                     chunk_q.regen_queue.push(chunk);
@@ -56,21 +53,19 @@ pub fn spawn_chunks(mut commands: Commands, mut chunk_q: ResMut<ChunkQueue>, mut
 pub fn update_chunks(mut chunk_q: ResMut<ChunkQueue>, player_query: Query<&Transform, With<Player>>, chunk_query: Query<(&Chunk, Entity), (With<Chunk>, Without<Player>)>) {
 
     let player_transform = player_query.single();
+    let transform = player_transform.translation.round();
+    let current_chunk = ChunkMap::coords_to_chunk(&[transform.x as i32, transform.y as i32, transform.z as i32]);
 
     let lower = (WORLD_SIZE as f32 * -0.5).ceil() as i32;
-    let upper = (WORLD_SIZE as f32 * 0.5).ceil() as i32;
+    let upper = (WORLD_SIZE as f32 *  0.5).ceil() as i32;
 
     for x in lower..upper {
         for y in lower..upper {
             for z in lower..upper {
-
-                let inv_chunk_size = 1.0 / CHUNK_SIZE as f32;
-
-                let x = x as f32 + player_transform.translation.x * inv_chunk_size; 
-                let y = y as f32 + player_transform.translation.y * inv_chunk_size; 
-                let z = z as f32 + player_transform.translation.z * inv_chunk_size; 
-
-                chunk_q.spawn_queue.push(Chunk([x as i32, y as i32, z as i32]));
+                let x = x + current_chunk.0[0];
+                let y = y + current_chunk.0[1];
+                let z = z + current_chunk.0[2];
+                chunk_q.spawn_queue.push(Chunk([x,y,z]));
             }
         }
     }

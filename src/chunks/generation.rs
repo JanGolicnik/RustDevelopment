@@ -10,16 +10,11 @@ impl ChunkGrid{
     pub fn new(val: bool) -> Self{
         ChunkGrid([val; CHUNK_VOLUME])
     }
-    pub fn set(&mut self, mut x: usize, mut y: usize, mut z: usize, val: bool) {
-        if x >= CHUNK_SIZE { x = CHUNK_SIZE - 1; }
-        if y >= CHUNK_SIZE { y = CHUNK_SIZE - 1; }
-        if z >= CHUNK_SIZE { z = CHUNK_SIZE - 1; }
+    pub fn set(&mut self, x: usize, y: usize, z: usize, val: bool) {
         self.0[Self::pos_to_index(&[x, y, z])] = val;
     }
+
     pub fn get(&self, x: usize, y: usize, z: usize) -> bool {
-        if x >= CHUNK_SIZE { return false; }
-        if y >= CHUNK_SIZE { return false; }
-        if z >= CHUNK_SIZE { return false; }
         self.0[Self::pos_to_index(&[x, y, z])]
     }
 
@@ -53,7 +48,7 @@ impl ChunkGrid{
             for y in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     let volume = volume_map[ChunkGrid::pos_to_index(&[x,y,z])];
-                    if volume > 0.75 {
+                    if volume > 0.85 {
                     self.set(x, y, z, true);
                 }
                 }
@@ -61,7 +56,7 @@ impl ChunkGrid{
         }
     }
 
-    pub fn to_mesh(&self, position_x: f32,position_y: f32, position_z: f32, neighbours: &[Option<&ChunkGrid>; 6]) -> Mesh {
+    pub fn to_mesh(&self, pos: &[i32; 3], neighbours: &[Option<&ChunkGrid>; 6]) -> Mesh {
        
         let mut positions: Vec<[f32; 3]> = Vec::new();
         let mut normals: Vec<[f32; 3]> = Vec::new();
@@ -139,9 +134,9 @@ impl ChunkGrid{
             for x in 0..CHUNK_SIZE {
                 for z in 0..CHUNK_SIZE {
                     if self.get(x, y, z) {
-                        let fx = position_x as f32 + x as f32 - CHUNK_SIZE as f32 * 0.5; 
-                        let fy = position_y as f32 + y as f32 - CHUNK_SIZE as f32 * 0.5;
-                        let fz = position_z as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
+                        let fx = pos[0] as f32 + x as f32 - CHUNK_SIZE as f32 * 0.5; 
+                        let fy = pos[1] as f32 + y as f32 - CHUNK_SIZE as f32 * 0.5;
+                        let fz = pos[2] as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
 
                         // dont look at this pls <3
                         if x == CHUNK_SIZE - 1 {

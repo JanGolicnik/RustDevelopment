@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_flycam::prelude::*;
-use chunks::{ChunkPlugin, chunkmap::ChunkMap, Chunk, chunkqueue::ChunkQueue};
+use chunks::{ChunkPlugin, chunkmap::ChunkMap, chunkqueue::ChunkQueue};
 
 mod chunks;
 
@@ -11,7 +11,7 @@ fn main() {
     App::new()
     .add_plugins((DefaultPlugins, NoCameraPlayerPlugin, ChunkPlugin))
     .insert_resource(MovementSettings {
-        speed: 10.0,
+        speed: 30.0,
         sensitivity: 0.00015,
     })
     .add_systems(Startup, setup)
@@ -22,7 +22,7 @@ fn main() {
 fn setup(mut commands: Commands){
     commands.spawn((
         Camera3dBundle {
-            transform: Transform::from_xyz(0.0, 32.0, 0.5),
+            transform: Transform::from_xyz(0.0, 0.0, 0.0),
             ..default()
         },
         FlyCam,
@@ -68,26 +68,14 @@ fn update_lights2(mut point_light_query: Query<&mut Transform, (Without<Player>,
 }
 
 fn update_player(player_query: Query<&Transform, With<Player>>, mut chunk_q: ResMut<ChunkQueue>, mut chunk_map: ResMut<ChunkMap>, input: Res<Input<KeyCode>>){
-    if input.just_pressed(KeyCode::Q){
-        let player_transform = player_query.single();
 
-        let translation = player_transform.translation;
-        let pos = [translation.x as i32, translation.y as i32, translation.z as i32];
-        println!("{:?}", pos);
+    let player_transform = player_query.single();
+
+    let translation = player_transform.translation;
+    let pos = [translation.x as i32, translation.y as i32, translation.z as i32];
+
+    if input.just_pressed(KeyCode::Q){
         chunk_map.set(&pos, true);
         chunk_q.remesh_queue.push(ChunkMap::coords_to_chunk(&pos));
-    }
-
-    if input.just_pressed(KeyCode::P){
-
-        let player_transform = player_query.single();
-        let translation = player_transform.translation;
-        let mut pos = [translation.x as i32, translation.y as i32, translation.z as i32];
-
-        for _ in 0..3{
-            chunk_map.set(&pos, true);
-            chunk_q.remesh_queue.push(ChunkMap::coords_to_chunk(&pos));
-            pos[0] += 1;
-        }
     }
 }
