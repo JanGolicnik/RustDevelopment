@@ -1,4 +1,5 @@
 use super::{
+    chunkgrid::ChunkGrid,
     chunkmap::ChunkMap,
     chunkqueue::ChunkQueue,
     material::{WorldMaterial, WorldTexture},
@@ -6,7 +7,16 @@ use super::{
     Chunk, WorldResourceLoadState, CHUNK_SIZE, RENDER_DIST, WORLD_SIZE,
 };
 use crate::{chunks::blocks::NUM_TEXTURES, Player};
-use bevy::{asset::LoadState, prelude::*};
+use bevy::{
+    asset::LoadState,
+    prelude::*,
+    tasks::{AsyncComputeTaskPool, Task},
+};
+use futures_lite::future;
+use noise::Perlin;
+
+#[derive(Component)]
+pub struct ComputeChunk(pub Task<Option<(Entity, Chunk, ChunkGrid, Mesh)>>);
 
 pub fn spawn_chunks(
     mut commands: Commands,
@@ -27,8 +37,15 @@ pub fn spawn_chunks(
                 .id();
 
             chunk_q.spawned_chunks.insert(*chunk, spawned_chunk_entity);
-            if !chunk_q.gen_queue.contains(chunk) {
-                chunk_q.gen_queue.push(*chunk);
+            let mut found = false;
+            for (c, _) in chunk_q.create_queue.iter() {
+                if c == chunk {
+                    found = true;
+                    break;
+                }
+            }
+            if !found {
+                chunk_q.create_queue.push((*chunk, spawned_chunk_entity));
             }
 
             for offset in NEIGHBOUR_OFFSETS {
@@ -121,12 +138,28 @@ pub fn remesh_chunks(
     chunk_q.remesh_queue.clear();
 }
 
-pub fn gen_chunks(mut chunkmap: ResMut<ChunkMap>, mut chunk_q: ResMut<ChunkQueue>) {
-    for chunk in &chunk_q.gen_queue {
-        chunkmap.gen(chunk);
+pub fn create_chunks(
+    mut commands: Commands,
+    chunkmap: Res<ChunkMap>,
+    mut chunk_q: ResMut<ChunkQueue>,
+) {
+    let thread_pool = AsyncComputeTaskPool::get();
+    for (chunk, entity) in chunk_q.create_queue.clone() {
+        let coords = chunk.0;
+
+        if chunkmap.chunks.contains_key(&chunk) {
+            continue;
+        }
+        let noise = Perlin::new(4);
+        let task = thread_pool.spawn(async move {
+            let grid = ChunkMap::gen(&chunk, &noise);
+            let mesh = ChunkMap::create_mesh(&grid, &coords);
+            Some((entity, chunk, grid, mesh))
+        });
+        commands.spawn(ComputeChunk(task));
     }
 
-    chunk_q.gen_queue.clear();
+    chunk_q.create_queue.clear();
 }
 
 pub fn load_resources(
@@ -159,4 +192,21 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
         handle: asset_server.load("textures/world_tilemap.png"),
         material_handle: None,
     })
+}
+
+pub fn create_from_compute(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut chunkmap: ResMut<ChunkMap>,
+    mut compute_chunk_query: Query<(Entity, &mut ComputeChunk)>,
+) {
+    for (compute_entity, mut compute_chunk) in compute_chunk_query.iter_mut() {
+        if let Some(Some((chunk_entity, chunk, grid, mesh))) =
+            future::block_on(future::poll_once(&mut compute_chunk.0))
+        {
+            commands.entity(compute_entity).despawn();
+            commands.entity(chunk_entity).try_insert(meshes.add(mesh));
+            chunkmap.chunks.insert(chunk, grid);
+        }
+    }
 }

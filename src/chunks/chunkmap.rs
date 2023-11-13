@@ -1,8 +1,8 @@
-use super::blocks::*;
 use super::chunkgrid::Block;
 use super::{chunkgrid::ChunkGrid, Chunk};
 use super::{CHUNK_SIZE, HALF_CHUNK_SIZE};
 use bevy::{prelude::*, utils::HashMap};
+use noise::Perlin;
 
 #[derive(Resource)]
 pub struct ChunkMap {
@@ -30,6 +30,10 @@ impl ChunkMap {
         None
     }
 
+    pub fn create_mesh(grid: &ChunkGrid, pos: &[i32; 3]) -> Mesh {
+        grid.to_mesh(&Self::chunk_to_world_coords(&Chunk(*pos)), &[None; 6])
+    }
+
     // pub fn regen(&mut self, chunk: &Chunk) {
     //     if !self.chunks.contains_key(chunk) {
     //         self.chunks.insert(*chunk, ChunkGrid::new(Block { id: 0 }));
@@ -40,13 +44,8 @@ impl ChunkMap {
     //     }
     // }
 
-    pub fn gen(&mut self, chunk: &Chunk) {
-        if !self.chunks.contains_key(chunk) {
-            self.chunks.insert(
-                *chunk,
-                ChunkGrid::generate(Self::chunk_to_world_coords(chunk)),
-            );
-        }
+    pub fn gen(chunk: &Chunk, noise: &Perlin) -> ChunkGrid {
+        ChunkGrid::generate(Self::chunk_to_world_coords(chunk), noise)
     }
 
     pub fn set(&mut self, coords: &[i32; 3], val: u8) {

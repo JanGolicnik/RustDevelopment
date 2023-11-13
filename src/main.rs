@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_flycam::prelude::*;
-use chunks::{blocks::*, chunkmap::ChunkMap, chunkqueue::ChunkQueue, ChunkPlugin};
+use chunks::{chunkmap::ChunkMap, chunkqueue::ChunkQueue, ChunkPlugin};
 
 mod chunks;
 
@@ -9,9 +9,13 @@ pub struct Player;
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, NoCameraPlayerPlugin, ChunkPlugin))
+        .add_plugins((
+            DefaultPlugins.set(ImagePlugin::default_nearest()),
+            NoCameraPlayerPlugin,
+            ChunkPlugin,
+        ))
         .insert_resource(MovementSettings {
-            speed: 30.0,
+            speed: 145.0,
             sensitivity: 0.00015,
         })
         .add_systems(Startup, setup)

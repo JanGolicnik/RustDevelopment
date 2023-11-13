@@ -2,7 +2,10 @@ use self::{
     chunkmap::ChunkMap,
     chunkqueue::ChunkQueue,
     material::WorldMaterial,
-    systems::{gen_chunks, load_resources, remesh_chunks, setup, spawn_chunks, update_chunks},
+    systems::{
+        create_chunks, create_from_compute, load_resources, remesh_chunks, setup, spawn_chunks,
+        update_chunks,
+    },
 };
 use bevy::{prelude::*, utils::HashMap};
 
@@ -14,11 +17,11 @@ mod material;
 mod systems;
 mod utils;
 
-pub const CHUNK_SIZE: usize = 32;
+pub const CHUNK_SIZE: usize = 48;
 pub const HALF_CHUNK_SIZE: usize = CHUNK_SIZE / 2;
 pub const CHUNK_VOLUME: usize = CHUNK_SIZE * CHUNK_SIZE * CHUNK_SIZE;
 
-pub const WORLD_SIZE: usize = 6;
+pub const WORLD_SIZE: usize = 10;
 
 const RENDER_DIST: f32 = WORLD_SIZE as f32 * CHUNK_SIZE as f32 * 2.0;
 
@@ -41,7 +44,7 @@ impl Plugin for ChunkPlugin {
                 spawn_queue: Vec::new(),
                 despawn_queue: Vec::new(),
                 remesh_queue: Vec::new(),
-                gen_queue: Vec::new(),
+                create_queue: Vec::new(),
                 spawned_chunks: HashMap::new(),
             })
             .insert_resource(ChunkMap {
@@ -53,10 +56,11 @@ impl Plugin for ChunkPlugin {
                 (
                     load_resources.run_if(in_state(WorldResourceLoadState::Loading)),
                     (
+                        create_from_compute,
                         update_chunks,
                         spawn_chunks.after(update_chunks),
-                        gen_chunks.after(spawn_chunks),
-                        remesh_chunks.after(gen_chunks),
+                        create_chunks.after(spawn_chunks),
+                        remesh_chunks.after(create_chunks),
                     )
                         .run_if(in_state(WorldResourceLoadState::Loaded)),
                 ),

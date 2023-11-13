@@ -1,11 +1,32 @@
-use super::{blocks::*, material::ATTRIBUTE_TEXTURE_INDEX, Chunk, CHUNK_SIZE, CHUNK_VOLUME};
+use super::{blocks::*, material::ATTRIBUTE_TEXTURE_INDEX, CHUNK_SIZE, CHUNK_VOLUME};
 use bevy::{
     prelude::*,
     render::{mesh::Indices, render_resource::PrimitiveTopology},
 };
 use noise::{NoiseFn, Perlin};
 
-const NOISE_SCALE: f64 = 1.0 / 32.0;
+const HEIGHT_NOISE_SCALE: f64 = 1.0 / 64.0;
+const REGIONAL_HEIGHT_NOISE_SCALE: f64 = 1.0 / 256.0;
+const MOUNTAIN_SCALE: f64 = 128.0;
+
+fn sample(noise: &Perlin, pos: [f64; 3]) -> f64 {
+    let mut noise_val = 1.0;
+
+    if pos[1] > 0.0 {
+        let mut height = noise.get([pos[0] * HEIGHT_NOISE_SCALE, pos[2] * HEIGHT_NOISE_SCALE]);
+        height = (height + 1.0) / 2.0;
+
+        let mut regional_height = noise.get([
+            pos[0] * REGIONAL_HEIGHT_NOISE_SCALE,
+            pos[2] * REGIONAL_HEIGHT_NOISE_SCALE,
+        ]);
+        regional_height = (regional_height + 1.0) / 2.0;
+
+        noise_val = (pos[1] < height * MOUNTAIN_SCALE * regional_height) as i8 as f64;
+    }
+
+    noise_val
+}
 
 #[derive(Debug, Copy, Clone)]
 pub struct Block {
@@ -35,38 +56,8 @@ impl ChunkGrid {
         pos[0] + pos[1] * CHUNK_SIZE + pos[2] * CHUNK_SIZE * CHUNK_SIZE
     }
 
-    pub fn generate(pos: [i32; 3]) -> ChunkGrid {
+    pub fn generate(pos: [i32; 3], noise: &Perlin) -> ChunkGrid {
         let mut ret = ChunkGrid::new(Block { id: 0 });
-
-        let noise = Perlin::new(5);
-
-        const NOISE_SIZE: usize = CHUNK_SIZE + 2;
-        const NOISE_VOLUME: usize = NOISE_SIZE * NOISE_SIZE * NOISE_SIZE;
-
-        let pos_to_noise_index =
-            |x: usize, y: usize, z: usize| x + y * NOISE_SIZE + z * NOISE_SIZE * NOISE_SIZE;
-
-        let mut volume_map: [f64; NOISE_VOLUME] = [0.; NOISE_VOLUME];
-
-        for x in 0..NOISE_SIZE {
-            for y in 0..NOISE_SIZE {
-                for z in 0..NOISE_SIZE {
-                    let world_x = (pos[0] as f64 + x as f64 - 1.0) * NOISE_SCALE;
-                    let world_y = (pos[1] as f64 + y as f64 - 1.0) * NOISE_SCALE;
-                    let world_z = (pos[2] as f64 + z as f64 - 1.0) * NOISE_SCALE;
-
-                    let mut noise_val = 1.0;
-
-                    if world_y > 0.0 {
-                        noise_val = noise.get([world_x, world_y, world_z]);
-                        noise_val = (noise_val + 1.0) / 2.0;
-                        noise_val *= f64::log(world_y * 50.0 + 1.0, 100.0).powf(-1.0);
-                    }
-
-                    volume_map[pos_to_noise_index(x, y, z)] = noise_val;
-                }
-            }
-        }
 
         for x in 0..CHUNK_SIZE {
             for y in 0..CHUNK_SIZE {
@@ -75,18 +66,30 @@ impl ChunkGrid {
                     let world_y = pos[1] + y as i32;
                     let world_z = pos[2] + z as i32;
 
-                    let noise_val_above = volume_map[pos_to_noise_index(x + 1, y + 1, z + 1)];
+                    let noise_val_above =
+                        sample(noise, [world_x as f64, world_y as f64, world_z as f64]);
                     if noise_val_above > 0.85 {
                         if world_y < 7 {
                             ret.set(x, y, z, Block { id: SAND });
                             continue;
                         }
-                        let noise_val_above = volume_map[pos_to_noise_index(x + 1, y + 2, z + 1)];
-                        if noise_val_above > 0.85 {
-                            ret.set(x, y, z, Block { id: GRASS });
+                        let above_value = sample(
+                            noise,
+                            [world_x as f64, world_y as f64 + 1.0, world_z as f64],
+                        );
+                        if above_value > 0.85 {
+                            let above_value = sample(
+                                noise,
+                                [world_x as f64, world_y as f64 + 5.0, world_z as f64],
+                            );
+                            if above_value > 0.85 {
+                                ret.set(x, y, z, Block { id: STONE });
+                            } else {
+                                ret.set(x, y, z, Block { id: DIRT });
+                            }
                             continue;
                         }
-                        ret.set(x, y, z, Block { id: DIRT });
+                        ret.set(x, y, z, Block { id: GRASS });
                     }
                 }
             }
@@ -102,57 +105,79 @@ impl ChunkGrid {
         let mut indices: Vec<u32> = Vec::new();
         let mut texture_indices: Vec<u32> = Vec::new();
 
-        let mut add_plane =
-            |x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32, flip: bool, block: u8| {
-                let i = positions.len() as u32;
-                if x0 == x1 {
-                    positions.push([x0, y0, z0]);
-                    positions.push([x0, y1, z0]);
-                    positions.push([x0, y0, z1]);
-                    positions.push([x1, y1, z1]);
+        enum BlockSide {
+            X,
+            Y,
+            Z,
+        }
 
+        let mut add_plane = |x: f32, y: f32, z: f32, side: BlockSide, flip: bool, block: u8| {
+            let i = positions.len() as u32;
+
+            let mut verts: [[f32; 3]; 4] = [[x, y, z]; 4];
+            let offset: usize;
+            let mut normal: [f32; 3];
+            let texture_offset: u32;
+
+            match side {
+                BlockSide::X => {
+                    offset = 0;
+                    normal = [1., 0., 0.];
+                    texture_offset = 1;
+                    uvs.append(&mut vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]]);
+                }
+                BlockSide::Y => {
+                    offset = 1;
+                    normal = [0., 1., 0.];
                     if flip {
-                        normals.append(&mut vec![[-1., 0., 0.]; 4]);
+                        texture_offset = 2;
                     } else {
-                        normals.append(&mut vec![[1., 0., 0.]; 4]);
+                        texture_offset = 0;
                     }
+                    uvs.append(&mut vec![[0., 0.], [0., 1.], [1., 0.], [1., 1.]]);
                 }
-
-                if y0 == y1 {
-                    positions.push([x0, y0, z0]);
-                    positions.push([x0, y0, z1]);
-                    positions.push([x1, y0, z0]);
-                    positions.push([x1, y1, z1]);
-
-                    if flip {
-                        normals.append(&mut vec![[0., -1., 0.]; 4]);
-                    } else {
-                        normals.append(&mut vec![[0., 1., 0.]; 4]);
-                    }
+                BlockSide::Z => {
+                    offset = 2;
+                    normal = [0., 0., 1.];
+                    texture_offset = 1;
+                    uvs.append(&mut vec![[0., 0.], [0., 1.], [1., 0.], [1., 1.]]);
                 }
+            }
 
-                if z0 == z1 {
-                    positions.push([x0, y0, z0]);
-                    positions.push([x1, y0, z1]);
-                    positions.push([x0, y1, z0]);
-                    positions.push([x1, y1, z1]);
+            verts[0][0] -= 0.5;
+            verts[0][1] -= 0.5;
+            verts[0][2] -= 0.5;
+            if !flip {
+                verts[0][offset] += 1.0;
+            }
 
-                    if flip {
-                        normals.append(&mut vec![[0., 0., -1.]; 4]);
-                    } else {
-                        normals.append(&mut vec![[0., 0., 1.]; 4]);
-                    }
-                }
+            verts[1] = verts[0];
+            verts[1][(offset + 2) % 3] += 1.0;
 
-                uvs.append(&mut vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]]);
-                texture_indices.append(&mut vec![block as u32; 4]);
+            verts[2] = verts[0];
+            verts[2][(offset + 1) % 3] += 1.0;
 
-                if flip {
-                    indices.append(&mut vec![i, i + 3, i + 1, i, i + 2, i + 3]);
-                } else {
-                    indices.append(&mut vec![i, i + 1, i + 3, i, i + 3, i + 2]);
-                }
-            };
+            verts[3] = verts[0];
+            verts[3][(offset + 1) % 3] += 1.0;
+            verts[3][(offset + 2) % 3] += 1.0;
+
+            if flip {
+                normal[0] = -normal[0];
+                normal[1] = -normal[1];
+                normal[2] = -normal[2];
+                indices.append(&mut vec![i, i + 1, i + 3, i, i + 3, i + 2]);
+            } else {
+                indices.append(&mut vec![i, i + 3, i + 1, i, i + 2, i + 3]);
+            }
+
+            positions.push(verts[0]);
+            positions.push(verts[1]);
+            positions.push(verts[2]);
+            positions.push(verts[3]);
+            normals.append(&mut vec![normal; 4]);
+
+            texture_indices.append(&mut vec![block as u32 + texture_offset; 4]);
+        };
 
         for y in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
@@ -167,169 +192,61 @@ impl ChunkGrid {
                         if x == CHUNK_SIZE - 1 {
                             if let Some(grid) = neighbours[0] {
                                 if !grid.is_filled(0, y, z) {
-                                    add_plane(
-                                        fx + 0.5,
-                                        fy - 0.5,
-                                        fz - 0.5,
-                                        fx + 0.5,
-                                        fy + 0.5,
-                                        fz + 0.5,
-                                        false,
-                                        block_id,
-                                    );
+                                    add_plane(fx, fy, fz, BlockSide::X, false, block_id);
                                 }
                             }
                         } else if !self.is_filled(x + 1, y, z) {
-                            add_plane(
-                                fx + 0.5,
-                                fy - 0.5,
-                                fz - 0.5,
-                                fx + 0.5,
-                                fy + 0.5,
-                                fz + 0.5,
-                                false,
-                                block_id,
-                            );
+                            add_plane(fx, fy, fz, BlockSide::X, false, block_id);
                         }
 
                         if x == 0 {
                             if let Some(grid) = neighbours[1] {
                                 if !grid.is_filled(CHUNK_SIZE - 1, y, z) {
-                                    add_plane(
-                                        fx - 0.5,
-                                        fy - 0.5,
-                                        fz - 0.5,
-                                        fx - 0.5,
-                                        fy + 0.5,
-                                        fz + 0.5,
-                                        true,
-                                        block_id,
-                                    );
+                                    add_plane(fx, fy, fz, BlockSide::X, true, block_id);
                                 }
                             }
                         } else if !self.is_filled(x - 1, y, z) {
-                            add_plane(
-                                fx - 0.5,
-                                fy - 0.5,
-                                fz - 0.5,
-                                fx - 0.5,
-                                fy + 0.5,
-                                fz + 0.5,
-                                true,
-                                block_id,
-                            );
+                            add_plane(fx, fy, fz, BlockSide::X, true, block_id);
                         }
 
                         if y == CHUNK_SIZE - 1 {
                             if let Some(grid) = neighbours[2] {
                                 if !grid.is_filled(x, 0, z) {
-                                    add_plane(
-                                        fx - 0.5,
-                                        fy + 0.5,
-                                        fz - 0.5,
-                                        fx + 0.5,
-                                        fy + 0.5,
-                                        fz + 0.5,
-                                        false,
-                                        block_id,
-                                    );
+                                    add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
                                 }
                             }
                         } else if !self.is_filled(x, y + 1, z) {
-                            add_plane(
-                                fx - 0.5,
-                                fy + 0.5,
-                                fz - 0.5,
-                                fx + 0.5,
-                                fy + 0.5,
-                                fz + 0.5,
-                                false,
-                                block_id,
-                            );
+                            add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
                         }
 
                         if y == 0 {
                             if let Some(grid) = neighbours[3] {
                                 if !grid.is_filled(x, CHUNK_SIZE - 1, z) {
-                                    add_plane(
-                                        fx - 0.5,
-                                        fy - 0.5,
-                                        fz - 0.5,
-                                        fx + 0.5,
-                                        fy - 0.5,
-                                        fz + 0.5,
-                                        true,
-                                        block_id,
-                                    );
+                                    add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
                                 }
                             }
                         } else if !self.is_filled(x, y - 1, z) {
-                            add_plane(
-                                fx - 0.5,
-                                fy - 0.5,
-                                fz - 0.5,
-                                fx + 0.5,
-                                fy - 0.5,
-                                fz + 0.5,
-                                true,
-                                block_id,
-                            );
+                            add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
                         }
 
                         if z == CHUNK_SIZE - 1 {
                             if let Some(grid) = neighbours[4] {
                                 if !grid.is_filled(x, y, 0) {
-                                    add_plane(
-                                        fx - 0.5,
-                                        fy - 0.5,
-                                        fz + 0.5,
-                                        fx + 0.5,
-                                        fy + 0.5,
-                                        fz + 0.5,
-                                        false,
-                                        block_id,
-                                    );
+                                    add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
                                 }
                             }
                         } else if !self.is_filled(x, y, z + 1) {
-                            add_plane(
-                                fx - 0.5,
-                                fy - 0.5,
-                                fz + 0.5,
-                                fx + 0.5,
-                                fy + 0.5,
-                                fz + 0.5,
-                                false,
-                                block_id,
-                            );
+                            add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
                         }
 
                         if z == 0 {
                             if let Some(grid) = neighbours[5] {
                                 if !grid.is_filled(x, y, CHUNK_SIZE - 1) {
-                                    add_plane(
-                                        fx - 0.5,
-                                        fy - 0.5,
-                                        fz - 0.5,
-                                        fx + 0.5,
-                                        fy + 0.5,
-                                        fz - 0.5,
-                                        true,
-                                        block_id,
-                                    );
+                                    add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
                                 }
                             }
                         } else if !self.is_filled(x, y, z - 1) {
-                            add_plane(
-                                fx - 0.5,
-                                fy - 0.5,
-                                fz - 0.5,
-                                fx + 0.5,
-                                fy + 0.5,
-                                fz - 0.5,
-                                true,
-                                block_id,
-                            );
+                            add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
                         }
                     }
                 }
