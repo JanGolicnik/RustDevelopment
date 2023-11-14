@@ -7,6 +7,7 @@ use noise::Perlin;
 #[derive(Resource)]
 pub struct ChunkMap {
     pub chunks: HashMap<Chunk, ChunkGrid>,
+    pub entities: HashMap<Chunk, Entity>,
 }
 
 impl ChunkMap {
@@ -33,16 +34,6 @@ impl ChunkMap {
     pub fn create_mesh(grid: &ChunkGrid, pos: &[i32; 3]) -> Mesh {
         grid.to_mesh(&Self::chunk_to_world_coords(&Chunk(*pos)), &[None; 6])
     }
-
-    // pub fn regen(&mut self, chunk: &Chunk) {
-    //     if !self.chunks.contains_key(chunk) {
-    //         self.chunks.insert(*chunk, ChunkGrid::new(Block { id: 0 }));
-    //     }
-
-    //     if let Some(chunkgrid) = self.chunks.get_mut(chunk) {
-    //         chunkgrid.generate(Self::chunk_to_world_coords(chunk));
-    //     }
-    // }
 
     pub fn gen(chunk: &Chunk, noise: &Perlin) -> ChunkGrid {
         ChunkGrid::generate(Self::chunk_to_world_coords(chunk), noise)

@@ -1,10 +1,9 @@
 use super::{
     chunkgrid::ChunkGrid,
     chunkmap::ChunkMap,
-    chunkqueue::ChunkQueue,
     material::{WorldMaterial, WorldTexture},
     utils::NEIGHBOUR_OFFSETS,
-    Chunk, WorldResourceLoadState, CHUNK_SIZE, RENDER_DIST, WORLD_SIZE,
+    Chunk, WorldResourceLoadState, CHUNK_SIZE, RENDER_DIST, WORLD_SIZE, chunkqueue::ChunkSpawnQueue,
 };
 use crate::{chunks::blocks::NUM_TEXTURES, Player};
 use bevy::{
@@ -20,7 +19,8 @@ pub struct ComputeChunk(pub Task<Option<(Entity, Chunk, ChunkGrid, Mesh)>>);
 
 pub fn spawn_chunks(
     mut commands: Commands,
-    mut chunk_q: ResMut<ChunkQueue>,
+    chunk_map: Res<ChunkMap>,
+    spawn_queue: Res<ChunkSpawnQueue>,
     world_texture: ResMut<WorldTexture>,
 ) {
     println!("spawn chunks");

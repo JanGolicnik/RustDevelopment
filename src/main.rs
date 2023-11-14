@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_flycam::prelude::*;
-use chunks::{chunkmap::ChunkMap, chunkqueue::ChunkQueue, ChunkPlugin};
+use chunks::{chunkmap::ChunkMap, ChunkPlugin};
 
 mod chunks;
 
