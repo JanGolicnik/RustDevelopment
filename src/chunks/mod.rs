@@ -1,10 +1,11 @@
 use self::{
     chunkmap::ChunkMap,
+    chunkqueue::{ChunkCreateQueue, ChunkDespawnQueue, ChunkRemeshQueue, ChunkSpawnQueue},
     material::WorldMaterial,
     systems::{
         create_chunks, create_from_compute, load_resources, remesh_chunks, setup, spawn_chunks,
         update_chunks,
-    }, chunkqueue::{ChunkSpawnQueue, ChunkDespawnQueue, ChunkRemeshQueue, ChunkCreateQueue},
+    },
 };
 use bevy::{prelude::*, utils::HashMap};
 
@@ -14,7 +15,6 @@ pub mod chunkmap;
 pub mod chunkqueue;
 mod material;
 mod systems;
-mod utils;
 
 pub const CHUNK_SIZE: usize = 48;
 pub const HALF_CHUNK_SIZE: usize = CHUNK_SIZE / 2;

@@ -1,6 +1,6 @@
 use bevy::prelude::*;
 use bevy_flycam::prelude::*;
-use chunks::{chunkmap::ChunkMap, ChunkPlugin};
+use chunks::{chunkmap::ChunkMap, chunkqueue::ChunkRemeshQueue, ChunkPlugin};
 
 mod chunks;
 
@@ -78,7 +78,7 @@ fn update_lights2(
 
 fn update_player(
     player_query: Query<&Transform, With<Player>>,
-    mut chunk_q: ResMut<ChunkQueue>,
+    mut remesh_queue: ResMut<ChunkRemeshQueue>,
     mut chunk_map: ResMut<ChunkMap>,
     input: Res<Input<KeyCode>>,
 ) {
@@ -94,6 +94,6 @@ fn update_player(
 
     if input.just_pressed(KeyCode::Q) {
         chunk_map.set(&pos, 1);
-        chunk_q.remesh_queue.push(ChunkMap::coords_to_chunk(&pos));
+        remesh_queue.0.push(ChunkMap::coords_to_chunk(&pos));
     }
 }

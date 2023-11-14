@@ -14,10 +14,10 @@ use bevy::prelude::*;
 pub struct ChunkSpawnQueue(pub Vec<Chunk>);
 
 #[derive(Resource)]
-pub struct ChunkDespawnQueue(pub Vec<Chunk>);
+pub struct ChunkDespawnQueue(pub Vec<(Entity, Chunk)>);
 
 #[derive(Resource)]
 pub struct ChunkRemeshQueue(pub Vec<Chunk>);
 
 #[derive(Resource)]
-pub struct ChunkCreateQueue(pub Vec<Chunk>);
+pub struct ChunkCreateQueue(pub Vec<(Chunk, Entity)>);

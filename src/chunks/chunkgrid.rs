@@ -9,6 +9,85 @@ const HEIGHT_NOISE_SCALE: f64 = 1.0 / 64.0;
 const REGIONAL_HEIGHT_NOISE_SCALE: f64 = 1.0 / 256.0;
 const MOUNTAIN_SCALE: f64 = 128.0;
 
+#[derive(Copy, Clone)]
+enum BlockSide {
+    X,
+    Y,
+    Z,
+}
+
+macro_rules! add_plane_inline_func {
+    ($positions:expr, $normals:expr, $uvs:expr, $indices:expr, $texture_indices:expr) => {
+        |x: f32, y: f32, z: f32, side: BlockSide, flip: bool, block: u8| {
+            let i = $positions.len() as u32;
+
+            let mut verts: [[f32; 3]; 4] = [[x, y, z]; 4];
+            let offset: usize;
+            let mut normal: [f32; 3];
+            let texture_offset: u32;
+
+            match side {
+                BlockSide::X => {
+                    offset = 0;
+                    normal = [1., 0., 0.];
+                    texture_offset = 1;
+                    $uvs.append(&mut vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]]);
+                }
+                BlockSide::Y => {
+                    offset = 1;
+                    normal = [0., 1., 0.];
+                    if flip {
+                        texture_offset = 2;
+                    } else {
+                        texture_offset = 0;
+                    }
+                    $uvs.append(&mut vec![[0., 0.], [0., 1.], [1., 0.], [1., 1.]]);
+                }
+                BlockSide::Z => {
+                    offset = 2;
+                    normal = [0., 0., 1.];
+                    texture_offset = 1;
+                    $uvs.append(&mut vec![[0., 0.], [0., 1.], [1., 0.], [1., 1.]]);
+                }
+            }
+
+            verts[0][0] -= 0.5;
+            verts[0][1] -= 0.5;
+            verts[0][2] -= 0.5;
+            if !flip {
+                verts[0][offset] += 1.0;
+            }
+
+            verts[1] = verts[0];
+            verts[1][(offset + 2) % 3] += 1.0;
+
+            verts[2] = verts[0];
+            verts[2][(offset + 1) % 3] += 1.0;
+
+            verts[3] = verts[0];
+            verts[3][(offset + 1) % 3] += 1.0;
+            verts[3][(offset + 2) % 3] += 1.0;
+
+            if flip {
+                normal[0] = -normal[0];
+                normal[1] = -normal[1];
+                normal[2] = -normal[2];
+                $indices.append(&mut vec![i, i + 1, i + 3, i, i + 3, i + 2]);
+            } else {
+                $indices.append(&mut vec![i, i + 3, i + 1, i, i + 2, i + 3]);
+            }
+
+            $positions.push(verts[0]);
+            $positions.push(verts[1]);
+            $positions.push(verts[2]);
+            $positions.push(verts[3]);
+            $normals.append(&mut vec![normal; 4]);
+
+            $texture_indices.append(&mut vec![block as u32 + texture_offset; 4])
+        }
+    };
+}
+
 fn sample(noise: &Perlin, pos: [f64; 3]) -> f64 {
     let mut noise_val = 1.0;
 
@@ -33,6 +112,12 @@ pub struct Block {
     pub id: u8,
 }
 
+impl Block {
+    pub fn is_filled(&self) -> bool {
+        self.id > AIR
+    }
+}
+
 #[derive(Debug)]
 pub struct ChunkGrid(pub [Block; CHUNK_VOLUME]);
 
@@ -49,7 +134,7 @@ impl ChunkGrid {
     }
 
     pub fn is_filled(&self, x: usize, y: usize, z: usize) -> bool {
-        self.get(x, y, z).id > AIR
+        self.get(x, y, z).is_filled()
     }
 
     pub fn pos_to_index(pos: &[usize; 3]) -> usize {
@@ -98,86 +183,16 @@ impl ChunkGrid {
         ret
     }
 
-    pub fn to_mesh(&self, pos: &[i32; 3], neighbours: &[Option<&ChunkGrid>; 6]) -> Mesh {
-        let mut positions: Vec<[f32; 3]> = Vec::new();
-        let mut normals: Vec<[f32; 3]> = Vec::new();
-        let mut uvs: Vec<[f32; 2]> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
-        let mut texture_indices: Vec<u32> = Vec::new();
+    pub fn to_mesh(&self, pos: &[i32; 3]) -> UnjoinedMesh {
+        let mut ret: UnjoinedMesh = UnjoinedMesh::default();
 
-        enum BlockSide {
-            X,
-            Y,
-            Z,
-        }
-
-        let mut add_plane = |x: f32, y: f32, z: f32, side: BlockSide, flip: bool, block: u8| {
-            let i = positions.len() as u32;
-
-            let mut verts: [[f32; 3]; 4] = [[x, y, z]; 4];
-            let offset: usize;
-            let mut normal: [f32; 3];
-            let texture_offset: u32;
-
-            match side {
-                BlockSide::X => {
-                    offset = 0;
-                    normal = [1., 0., 0.];
-                    texture_offset = 1;
-                    uvs.append(&mut vec![[0., 0.], [1., 0.], [0., 1.], [1., 1.]]);
-                }
-                BlockSide::Y => {
-                    offset = 1;
-                    normal = [0., 1., 0.];
-                    if flip {
-                        texture_offset = 2;
-                    } else {
-                        texture_offset = 0;
-                    }
-                    uvs.append(&mut vec![[0., 0.], [0., 1.], [1., 0.], [1., 1.]]);
-                }
-                BlockSide::Z => {
-                    offset = 2;
-                    normal = [0., 0., 1.];
-                    texture_offset = 1;
-                    uvs.append(&mut vec![[0., 0.], [0., 1.], [1., 0.], [1., 1.]]);
-                }
-            }
-
-            verts[0][0] -= 0.5;
-            verts[0][1] -= 0.5;
-            verts[0][2] -= 0.5;
-            if !flip {
-                verts[0][offset] += 1.0;
-            }
-
-            verts[1] = verts[0];
-            verts[1][(offset + 2) % 3] += 1.0;
-
-            verts[2] = verts[0];
-            verts[2][(offset + 1) % 3] += 1.0;
-
-            verts[3] = verts[0];
-            verts[3][(offset + 1) % 3] += 1.0;
-            verts[3][(offset + 2) % 3] += 1.0;
-
-            if flip {
-                normal[0] = -normal[0];
-                normal[1] = -normal[1];
-                normal[2] = -normal[2];
-                indices.append(&mut vec![i, i + 1, i + 3, i, i + 3, i + 2]);
-            } else {
-                indices.append(&mut vec![i, i + 3, i + 1, i, i + 2, i + 3]);
-            }
-
-            positions.push(verts[0]);
-            positions.push(verts[1]);
-            positions.push(verts[2]);
-            positions.push(verts[3]);
-            normals.append(&mut vec![normal; 4]);
-
-            texture_indices.append(&mut vec![block as u32 + texture_offset; 4]);
-        };
+        let mut add_plane = add_plane_inline_func!(
+            ret.positions,
+            ret.normals,
+            ret.uvs,
+            ret.indices,
+            ret.texture_indices
+        );
 
         for y in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
@@ -189,63 +204,27 @@ impl ChunkGrid {
                         let fz = pos[2] as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
 
                         // dont look at this pls <3
-                        if x == CHUNK_SIZE - 1 {
-                            if let Some(grid) = neighbours[0] {
-                                if !grid.is_filled(0, y, z) {
-                                    add_plane(fx, fy, fz, BlockSide::X, false, block_id);
-                                }
-                            }
-                        } else if !self.is_filled(x + 1, y, z) {
+                        if x < CHUNK_SIZE - 1 && !self.is_filled(x + 1, y, z) {
                             add_plane(fx, fy, fz, BlockSide::X, false, block_id);
                         }
 
-                        if x == 0 {
-                            if let Some(grid) = neighbours[1] {
-                                if !grid.is_filled(CHUNK_SIZE - 1, y, z) {
-                                    add_plane(fx, fy, fz, BlockSide::X, true, block_id);
-                                }
-                            }
-                        } else if !self.is_filled(x - 1, y, z) {
+                        if x > 0 && !self.is_filled(x - 1, y, z) {
                             add_plane(fx, fy, fz, BlockSide::X, true, block_id);
                         }
 
-                        if y == CHUNK_SIZE - 1 {
-                            if let Some(grid) = neighbours[2] {
-                                if !grid.is_filled(x, 0, z) {
-                                    add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
-                                }
-                            }
-                        } else if !self.is_filled(x, y + 1, z) {
+                        if y < CHUNK_SIZE - 1 && !self.is_filled(x, y + 1, z) {
                             add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
                         }
 
-                        if y == 0 {
-                            if let Some(grid) = neighbours[3] {
-                                if !grid.is_filled(x, CHUNK_SIZE - 1, z) {
-                                    add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
-                                }
-                            }
-                        } else if !self.is_filled(x, y - 1, z) {
+                        if y > 0 && !self.is_filled(x, y - 1, z) {
                             add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
                         }
 
-                        if z == CHUNK_SIZE - 1 {
-                            if let Some(grid) = neighbours[4] {
-                                if !grid.is_filled(x, y, 0) {
-                                    add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
-                                }
-                            }
-                        } else if !self.is_filled(x, y, z + 1) {
+                        if z < CHUNK_SIZE - 1 && !self.is_filled(x, y, z + 1) {
                             add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
                         }
 
-                        if z == 0 {
-                            if let Some(grid) = neighbours[5] {
-                                if !grid.is_filled(x, y, CHUNK_SIZE - 1) {
-                                    add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
-                                }
-                            }
-                        } else if !self.is_filled(x, y, z - 1) {
+                        if z > 0 && !self.is_filled(x, y, z - 1) {
                             add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
                         }
                     }
@@ -253,12 +232,123 @@ impl ChunkGrid {
             }
         }
 
+        ret
+
+        // let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
+        // mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        // mesh.insert_attribute(ATTRIBUTE_TEXTURE_INDEX, texture_indices);
+        // mesh.set_indices(Some(Indices::U32(indices)));
+        // mesh
+    }
+
+    pub fn generate_borders_mesh(
+        &self,
+        pos: &[i32; 3],
+        neighbours: &[Option<&ChunkGrid>],
+    ) -> UnjoinedMesh {
+        let mut ret = UnjoinedMesh::default();
+
+        let mut add_plane = add_plane_inline_func!(
+            ret.positions,
+            ret.normals,
+            ret.uvs,
+            ret.indices,
+            ret.texture_indices
+        );
+
+        let offsets = [
+            (0, 1, 2, BlockSide::X),
+            (1, 0, 2, BlockSide::Y),
+            (2, 0, 1, BlockSide::Z),
+        ];
+
+        let mut neighbour_index = 0;
+        for (main_axis, first_axis, second_axis, block_side) in offsets {
+            let mut second_run = false;
+            loop {
+                let mut block_pos = [CHUNK_SIZE - 1; 3];
+                block_pos[first_axis] = 0;
+                block_pos[second_axis] = 0;
+                if second_run {
+                    block_pos[main_axis] = 0;
+                }
+
+                if let Some(grid) = neighbours[neighbour_index] {
+                    for _ in 0..CHUNK_SIZE {
+                        for _ in 0..CHUNK_SIZE {
+                            let x = block_pos[0];
+                            let y = block_pos[1];
+                            let z = block_pos[2];
+                            let block_id = self.get(x, y, z).id;
+                            if self.is_filled(x, y, z) {
+                                let fx = pos[0] as f32 + x as f32 - CHUNK_SIZE as f32 * 0.5;
+                                let fy = pos[1] as f32 + y as f32 - CHUNK_SIZE as f32 * 0.5;
+                                let fz = pos[2] as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
+
+                                let mut neighbour_pos = block_pos;
+                                if second_run {
+                                    neighbour_pos[main_axis] = CHUNK_SIZE - 1;
+                                } else {
+                                    neighbour_pos[main_axis] = 0;
+                                }
+                                if !grid.is_filled(
+                                    neighbour_pos[0],
+                                    neighbour_pos[1],
+                                    neighbour_pos[2],
+                                ) {
+                                    add_plane(fx, fy, fz, block_side, second_run, block_id);
+                                }
+                            }
+                            block_pos[second_axis] += 1;
+                        }
+                        block_pos[first_axis] += 1;
+                        block_pos[second_axis] = 0;
+                    }
+                }
+                if second_run {
+                    neighbour_index += 1;
+                    break;
+                }
+                second_run = true;
+                neighbour_index += 1;
+            }
+        }
+
+        ret
+    }
+}
+
+#[derive(Default)]
+pub struct UnjoinedMesh {
+    positions: Vec<[f32; 3]>,
+    normals: Vec<[f32; 3]>,
+    uvs: Vec<[f32; 2]>,
+    indices: Vec<u32>,
+    texture_indices: Vec<u32>,
+}
+
+impl UnjoinedMesh {
+    pub fn to_mesh(unjoined_mesh: UnjoinedMesh) -> Mesh {
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-        mesh.insert_attribute(ATTRIBUTE_TEXTURE_INDEX, texture_indices);
-        mesh.set_indices(Some(Indices::U32(indices)));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, unjoined_mesh.positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, unjoined_mesh.normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, unjoined_mesh.uvs);
+        mesh.insert_attribute(ATTRIBUTE_TEXTURE_INDEX, unjoined_mesh.texture_indices);
+        mesh.set_indices(Some(Indices::U32(unjoined_mesh.indices)));
         mesh
+    }
+
+    pub fn join(&mut self, mut other: UnjoinedMesh) {
+        let positions_len = self.positions.len() as u32;
+        self.positions.append(&mut other.positions);
+        self.normals.append(&mut other.normals);
+        self.uvs.append(&mut other.uvs);
+        self.texture_indices.append(&mut other.texture_indices);
+        for index in other.indices.iter_mut() {
+            *index += positions_len;
+        }
+        self.indices.append(&mut other.indices);
     }
 }

@@ -11,29 +11,16 @@ pub struct ChunkMap {
 }
 
 impl ChunkMap {
-    pub fn remesh(&self, chunk: &Chunk) -> Option<Mesh> {
-        if let Some(chunkgrid) = self.chunks.get(chunk) {
-            let x = chunk.0[0];
-            let y = chunk.0[1];
-            let z = chunk.0[2];
+    // pub fn remesh(&self, chunk: &Chunk) -> Option<Mesh> {
+    // if let Some(chunkgrid) = self.chunks.get(chunk) {
+    //     return Some(chunkgrid.to_mesh(&Self::chunk_to_world_coords(chunk)));
+    // }
+    // None
+    // }
 
-            let neighbours: [Option<&ChunkGrid>; 6] = [
-                self.chunks.get(&Chunk([x + 1, y, z])),
-                self.chunks.get(&Chunk([x - 1, y, z])),
-                self.chunks.get(&Chunk([x, y + 1, z])),
-                self.chunks.get(&Chunk([x, y - 1, z])),
-                self.chunks.get(&Chunk([x, y, z + 1])),
-                self.chunks.get(&Chunk([x, y, z - 1])),
-            ];
-
-            return Some(chunkgrid.to_mesh(&Self::chunk_to_world_coords(chunk), &neighbours));
-        }
-        None
-    }
-
-    pub fn create_mesh(grid: &ChunkGrid, pos: &[i32; 3]) -> Mesh {
-        grid.to_mesh(&Self::chunk_to_world_coords(&Chunk(*pos)), &[None; 6])
-    }
+    // pub fn create_mesh(grid: &ChunkGrid, pos: &[i32; 3]) -> Mesh {
+    //     grid.to_mesh(&Self::chunk_to_world_coords(&Chunk(*pos)))
+    // }
 
     pub fn gen(chunk: &Chunk, noise: &Perlin) -> ChunkGrid {
         ChunkGrid::generate(Self::chunk_to_world_coords(chunk), noise)
