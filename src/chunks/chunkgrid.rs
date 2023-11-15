@@ -183,16 +183,15 @@ impl ChunkGrid {
         ret
     }
 
-    pub fn to_mesh(&self, pos: &[i32; 3]) -> UnjoinedMesh {
-        let mut ret: UnjoinedMesh = UnjoinedMesh::default();
+    pub fn to_mesh(&self, pos: &[i32; 3]) -> Mesh {
+        let mut positions: Vec<[f32; 3]> = Vec::new();
+        let mut normals: Vec<[f32; 3]> = Vec::new();
+        let mut uvs: Vec<[f32; 2]> = Vec::new();
+        let mut indices: Vec<u32> = Vec::new();
+        let mut texture_indices: Vec<u32> = Vec::new();
 
-        let mut add_plane = add_plane_inline_func!(
-            ret.positions,
-            ret.normals,
-            ret.uvs,
-            ret.indices,
-            ret.texture_indices
-        );
+        let mut add_plane =
+            add_plane_inline_func!(positions, normals, uvs, indices, texture_indices);
 
         for y in 0..CHUNK_SIZE {
             for x in 0..CHUNK_SIZE {
@@ -204,27 +203,27 @@ impl ChunkGrid {
                         let fz = pos[2] as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
 
                         // dont look at this pls <3
-                        if x < CHUNK_SIZE - 1 && !self.is_filled(x + 1, y, z) {
+                        if x == CHUNK_SIZE - 1 || !self.is_filled(x + 1, y, z) {
                             add_plane(fx, fy, fz, BlockSide::X, false, block_id);
                         }
 
-                        if x > 0 && !self.is_filled(x - 1, y, z) {
+                        if x == 0 || !self.is_filled(x - 1, y, z) {
                             add_plane(fx, fy, fz, BlockSide::X, true, block_id);
                         }
 
-                        if y < CHUNK_SIZE - 1 && !self.is_filled(x, y + 1, z) {
+                        if y == CHUNK_SIZE - 1 || !self.is_filled(x, y + 1, z) {
                             add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
                         }
 
-                        if y > 0 && !self.is_filled(x, y - 1, z) {
+                        if y == 0 || !self.is_filled(x, y - 1, z) {
                             add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
                         }
 
-                        if z < CHUNK_SIZE - 1 && !self.is_filled(x, y, z + 1) {
+                        if z == CHUNK_SIZE - 1 || !self.is_filled(x, y, z + 1) {
                             add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
                         }
 
-                        if z > 0 && !self.is_filled(x, y, z - 1) {
+                        if z == 0 || !self.is_filled(x, y, z - 1) {
                             add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
                         }
                     }
@@ -232,123 +231,12 @@ impl ChunkGrid {
             }
         }
 
-        ret
-
-        // let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
-        // mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
-        // mesh.insert_attribute(ATTRIBUTE_TEXTURE_INDEX, texture_indices);
-        // mesh.set_indices(Some(Indices::U32(indices)));
-        // mesh
-    }
-
-    pub fn generate_borders_mesh(
-        &self,
-        pos: &[i32; 3],
-        neighbours: &[Option<&ChunkGrid>],
-    ) -> UnjoinedMesh {
-        let mut ret = UnjoinedMesh::default();
-
-        let mut add_plane = add_plane_inline_func!(
-            ret.positions,
-            ret.normals,
-            ret.uvs,
-            ret.indices,
-            ret.texture_indices
-        );
-
-        let offsets = [
-            (0, 1, 2, BlockSide::X),
-            (1, 0, 2, BlockSide::Y),
-            (2, 0, 1, BlockSide::Z),
-        ];
-
-        let mut neighbour_index = 0;
-        for (main_axis, first_axis, second_axis, block_side) in offsets {
-            let mut second_run = false;
-            loop {
-                let mut block_pos = [CHUNK_SIZE - 1; 3];
-                block_pos[first_axis] = 0;
-                block_pos[second_axis] = 0;
-                if second_run {
-                    block_pos[main_axis] = 0;
-                }
-
-                if let Some(grid) = neighbours[neighbour_index] {
-                    for _ in 0..CHUNK_SIZE {
-                        for _ in 0..CHUNK_SIZE {
-                            let x = block_pos[0];
-                            let y = block_pos[1];
-                            let z = block_pos[2];
-                            let block_id = self.get(x, y, z).id;
-                            if self.is_filled(x, y, z) {
-                                let fx = pos[0] as f32 + x as f32 - CHUNK_SIZE as f32 * 0.5;
-                                let fy = pos[1] as f32 + y as f32 - CHUNK_SIZE as f32 * 0.5;
-                                let fz = pos[2] as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
-
-                                let mut neighbour_pos = block_pos;
-                                if second_run {
-                                    neighbour_pos[main_axis] = CHUNK_SIZE - 1;
-                                } else {
-                                    neighbour_pos[main_axis] = 0;
-                                }
-                                if !grid.is_filled(
-                                    neighbour_pos[0],
-                                    neighbour_pos[1],
-                                    neighbour_pos[2],
-                                ) {
-                                    add_plane(fx, fy, fz, block_side, second_run, block_id);
-                                }
-                            }
-                            block_pos[second_axis] += 1;
-                        }
-                        block_pos[first_axis] += 1;
-                        block_pos[second_axis] = 0;
-                    }
-                }
-                if second_run {
-                    neighbour_index += 1;
-                    break;
-                }
-                second_run = true;
-                neighbour_index += 1;
-            }
-        }
-
-        ret
-    }
-}
-
-#[derive(Default)]
-pub struct UnjoinedMesh {
-    positions: Vec<[f32; 3]>,
-    normals: Vec<[f32; 3]>,
-    uvs: Vec<[f32; 2]>,
-    indices: Vec<u32>,
-    texture_indices: Vec<u32>,
-}
-
-impl UnjoinedMesh {
-    pub fn to_mesh(unjoined_mesh: UnjoinedMesh) -> Mesh {
         let mut mesh = Mesh::new(PrimitiveTopology::TriangleList);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, unjoined_mesh.positions);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, unjoined_mesh.normals);
-        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, unjoined_mesh.uvs);
-        mesh.insert_attribute(ATTRIBUTE_TEXTURE_INDEX, unjoined_mesh.texture_indices);
-        mesh.set_indices(Some(Indices::U32(unjoined_mesh.indices)));
+        mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+        mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+        mesh.insert_attribute(ATTRIBUTE_TEXTURE_INDEX, texture_indices);
+        mesh.set_indices(Some(Indices::U32(indices)));
         mesh
-    }
-
-    pub fn join(&mut self, mut other: UnjoinedMesh) {
-        let positions_len = self.positions.len() as u32;
-        self.positions.append(&mut other.positions);
-        self.normals.append(&mut other.normals);
-        self.uvs.append(&mut other.uvs);
-        self.texture_indices.append(&mut other.texture_indices);
-        for index in other.indices.iter_mut() {
-            *index += positions_len;
-        }
-        self.indices.append(&mut other.indices);
     }
 }

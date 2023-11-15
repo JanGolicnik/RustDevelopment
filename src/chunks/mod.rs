@@ -1,10 +1,9 @@
 use self::{
     chunkmap::ChunkMap,
-    chunkqueue::{ChunkCreateQueue, ChunkDespawnQueue, ChunkRemeshQueue, ChunkSpawnQueue},
+    chunkqueue::{ChunkCreateQueue, ChunkDespawnQueue, ChunkSpawnQueue},
     material::WorldMaterial,
     systems::{
-        create_chunks, create_from_compute, load_resources, remesh_chunks, setup, spawn_chunks,
-        update_chunks,
+        create_chunks, create_from_compute, load_resources, setup, spawn_chunks, update_chunks,
     },
 };
 use bevy::{prelude::*, utils::HashMap};
@@ -41,7 +40,6 @@ impl Plugin for ChunkPlugin {
             .add_state::<WorldResourceLoadState>()
             .insert_resource(ChunkSpawnQueue(Vec::new()))
             .insert_resource(ChunkDespawnQueue(Vec::new()))
-            .insert_resource(ChunkRemeshQueue(Vec::new()))
             .insert_resource(ChunkCreateQueue(Vec::new()))
             .insert_resource(ChunkMap {
                 chunks: HashMap::new(),
@@ -57,7 +55,6 @@ impl Plugin for ChunkPlugin {
                         update_chunks,
                         spawn_chunks.after(update_chunks),
                         create_chunks.after(spawn_chunks),
-                        remesh_chunks.after(create_chunks),
                     )
                         .run_if(in_state(WorldResourceLoadState::Loaded)),
                 ),

@@ -1,7 +1,7 @@
 use super::{
-    chunkgrid::{ChunkGrid, UnjoinedMesh},
+    chunkgrid::ChunkGrid,
     chunkmap::ChunkMap,
-    chunkqueue::{ChunkCreateQueue, ChunkDespawnQueue, ChunkRemeshQueue, ChunkSpawnQueue},
+    chunkqueue::{ChunkCreateQueue, ChunkDespawnQueue, ChunkSpawnQueue},
     material::{WorldMaterial, WorldTexture},
     Chunk, WorldResourceLoadState, CHUNK_SIZE, RENDER_DIST, WORLD_SIZE,
 };
@@ -15,7 +15,7 @@ use futures_lite::future;
 use noise::Perlin;
 
 #[derive(Component)]
-pub struct ComputeChunk(pub Task<Option<(Entity, Chunk, ChunkGrid, UnjoinedMesh)>>);
+pub struct ComputeChunk(pub Task<Option<(Entity, Chunk, ChunkGrid, Mesh)>>);
 
 pub fn spawn_chunks(
     mut commands: Commands,
@@ -110,25 +110,6 @@ pub fn update_chunks(
     }
 }
 
-pub fn remesh_chunks(
-    mut commands: Commands,
-    chunk_map: Res<ChunkMap>,
-    mut remesh_queue: ResMut<ChunkRemeshQueue>,
-    mut meshes: ResMut<Assets<Mesh>>,
-) {
-    println!("remesh_chunks {}", remesh_queue.0.len());
-    for chunk in &remesh_queue.0 {
-        if let Some(entity) = chunk_map.entities.get(chunk) {
-            // if let Some(mesh) = chunk_map.remesh(chunk) {
-            //     commands.entity(*entity).try_insert(meshes.add(mesh));
-            // }
-        }
-    }
-    println!("ended remesh_chunks");
-
-    remesh_queue.0.clear();
-}
-
 pub fn create_chunks(
     mut commands: Commands,
     chunkmap: Res<ChunkMap>,
@@ -187,39 +168,18 @@ pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
 
 pub fn create_from_compute(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
     mut chunk_map: ResMut<ChunkMap>,
     mut compute_chunk_query: Query<(Entity, &mut ComputeChunk)>,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
     for (compute_entity, mut compute_chunk) in compute_chunk_query.iter_mut() {
-        if let Some(Some((chunk_entity, chunk, grid, mut mesh))) =
+        if let Some(Some((chunk_entity, chunk, grid, mesh))) =
             future::block_on(future::poll_once(&mut compute_chunk.0))
         {
             commands.entity(compute_entity).despawn();
             chunk_map.chunks.insert(chunk, grid);
 
-            if let Some(grid) = chunk_map.chunks.get(&chunk) {
-                let x = chunk.0[0];
-                let y = chunk.0[1];
-                let z = chunk.0[2];
-
-                let neighbours: [Option<&ChunkGrid>; 6] = [
-                    chunk_map.chunks.get(&Chunk([x + 1, y, z])),
-                    chunk_map.chunks.get(&Chunk([x - 1, y, z])),
-                    chunk_map.chunks.get(&Chunk([x, y + 1, z])),
-                    chunk_map.chunks.get(&Chunk([x, y - 1, z])),
-                    chunk_map.chunks.get(&Chunk([x, y, z + 1])),
-                    chunk_map.chunks.get(&Chunk([x, y, z - 1])),
-                ];
-
-                let mut border_mesh = grid
-                    .generate_borders_mesh(&ChunkMap::chunk_to_world_coords(&chunk), &neighbours);
-                mesh.join(border_mesh);
-                let combined_mesh = UnjoinedMesh::to_mesh(mesh);
-                commands
-                    .entity(chunk_entity)
-                    .try_insert(meshes.add(combined_mesh));
-            }
+            commands.entity(chunk_entity).try_insert(meshes.add(mesh));
         }
     }
 }
