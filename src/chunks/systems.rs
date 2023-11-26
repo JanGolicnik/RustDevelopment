@@ -5,7 +5,7 @@ use super::{
     material::{WorldMaterial, WorldTexture},
     Chunk, WorldResourceLoadState, CHUNK_SIZE, RENDER_DIST, WORLD_SIZE,
 };
-use crate::{chunks::blocks::NUM_TEXTURES, Player};
+use crate::{chunks::blocks::NUM_TEXTURES, craftdebug, Player};
 use bevy::{
     asset::LoadState,
     prelude::*,
@@ -25,7 +25,7 @@ pub fn spawn_chunks(
     mut despawn_queue: ResMut<ChunkDespawnQueue>,
     world_texture: ResMut<WorldTexture>,
 ) {
-    println!("spawn chunks");
+    craftdebug!(println!("spawn chunks"));
     for chunk in &spawn_queue.0.clone() {
         if !chunk_map.entities.contains_key(chunk) {
             let spawned_chunk_entity = commands
@@ -68,7 +68,7 @@ pub fn update_chunks(
     player_query: Query<&Transform, With<Player>>,
     chunk_query: Query<(&Chunk, Entity), Without<Player>>,
 ) {
-    println!("update_chunks");
+    craftdebug!(println!("update_chunks"));
     let player_transform = player_query.single();
     let transform = player_transform.translation.round();
     let current_chunk =
@@ -135,7 +135,7 @@ pub fn load_resources(
     mut materials: ResMut<Assets<WorldMaterial>>,
     mut load_state: ResMut<NextState<WorldResourceLoadState>>,
 ) {
-    println!("load_resources");
+    craftdebug!(println!("load_resources"));
     if asset_server.load_state(world_texture.handle.clone()) != LoadState::Loaded {
         return;
     }
@@ -152,7 +152,7 @@ pub fn load_resources(
 }
 
 pub fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    println!("setup");
+    craftdebug!(println!("setup"));
     commands.insert_resource(WorldTexture {
         is_loaded: false,
         handle: asset_server.load("textures/world_tilemap.png"),
@@ -176,4 +176,24 @@ pub fn create_from_compute(
             commands.entity(chunk_entity).try_insert(meshes.add(mesh));
         }
     }
+}
+
+pub fn rebuild_chunks(
+    mut commands: Commands,
+    mut chunk_map: ResMut<ChunkMap>,
+    mut meshes: ResMut<Assets<Mesh>>,
+) {
+    for chunk in chunk_map.chunks_to_rebuild.clone() {
+        let coords = chunk.0;
+
+        if let Some(grid) = chunk_map.chunks.get(&chunk) {
+            if let Some(entity) = chunk_map.entities.get(&chunk) {
+                let noise = Perlin::new(4);
+                let mesh = grid.to_mesh(&ChunkMap::chunk_to_world_coords(&Chunk(coords)), &noise);
+                commands.entity(*entity).try_insert(meshes.add(mesh));
+            }
+        }
+    }
+
+    chunk_map.chunks_to_rebuild.clear();
 }

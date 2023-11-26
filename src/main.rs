@@ -3,6 +3,7 @@ use bevy_flycam::prelude::*;
 use chunks::{chunkmap::ChunkMap, ChunkPlugin};
 
 mod chunks;
+mod craftdebug;
 
 #[derive(Component)]
 pub struct Player;
@@ -24,7 +25,7 @@ fn main() {
 }
 
 fn setup(mut commands: Commands) {
-    println!("setup");
+    craftdebug!(println!("setup"));
     commands.spawn((
         Camera3dBundle {
             transform: Transform::from_xyz(0.0, 0.0, 0.0),
@@ -55,7 +56,7 @@ fn update_lights(
     mut light_query: Query<&mut Transform, (Without<PointLight>, With<DirectionalLight>)>,
     time: Res<Time>,
 ) {
-    println!("update_lights");
+    craftdebug!(println!("update_lights"));
     let elapsed_time = time.elapsed().as_secs_f32();
 
     for mut transform in light_query.iter_mut() {
@@ -68,7 +69,7 @@ fn update_lights2(
     mut point_light_query: Query<&mut Transform, (Without<Player>, With<PointLight>)>,
     player_query: Query<&Transform, (Without<PointLight>, With<Player>)>,
 ) {
-    println!("update_lights2");
+    craftdebug!(println!("update_lights2"));
     let player_transform = player_query.single();
 
     for mut transform in point_light_query.iter_mut() {
@@ -79,19 +80,27 @@ fn update_lights2(
 fn update_player(
     player_query: Query<&Transform, With<Player>>,
     mut chunk_map: ResMut<ChunkMap>,
-    input: Res<Input<KeyCode>>,
+    input: Res<Input<MouseButton>>,
 ) {
-    println!("update_player");
     let player_transform = player_query.single();
-
-    let translation = player_transform.translation;
-    let pos = [
-        translation.x as i32,
-        translation.y as i32,
-        translation.z as i32,
-    ];
-
-    if input.just_pressed(KeyCode::Q) {
-        chunk_map.set(&pos, 1);
+    if input.pressed(MouseButton::Left) {
+        let pos = player_transform.translation;
+        let rot = player_transform.rotation;
+        let dir = rot * Vec3::new(0.0, 0.0, -1.0);
+        if let Some((pos, block)) = chunk_map.collide(
+            Ray {
+                origin: pos,
+                direction: dir,
+            },
+            500.0,
+        ) {
+            for x in -4..4 {
+                for y in -4..4 {
+                    for z in -4..4 {
+                        chunk_map.set(&[pos.x as i32 + x, pos.y as i32 + y, pos.z as i32 + z], 0);
+                    }
+                }
+            }
+        }
     }
 }

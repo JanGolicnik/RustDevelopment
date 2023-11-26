@@ -3,10 +3,14 @@ use self::{
     chunkqueue::{ChunkCreateQueue, ChunkDespawnQueue, ChunkSpawnQueue},
     material::WorldMaterial,
     systems::{
-        create_chunks, create_from_compute, load_resources, setup, spawn_chunks, update_chunks,
+        create_chunks, create_from_compute, load_resources, rebuild_chunks, setup, spawn_chunks,
+        update_chunks,
     },
 };
-use bevy::{prelude::*, utils::HashMap};
+use bevy::{
+    prelude::*,
+    utils::{HashMap, HashSet},
+};
 
 pub mod blocks;
 pub mod chunkgrid;
@@ -44,6 +48,7 @@ impl Plugin for ChunkPlugin {
             .insert_resource(ChunkMap {
                 chunks: HashMap::new(),
                 entities: HashMap::new(),
+                chunks_to_rebuild: HashSet::new(),
             })
             .add_systems(Startup, setup)
             .add_systems(
@@ -53,6 +58,7 @@ impl Plugin for ChunkPlugin {
                     (
                         create_from_compute,
                         update_chunks,
+                        rebuild_chunks,
                         spawn_chunks.after(update_chunks),
                         create_chunks.after(spawn_chunks),
                     )
