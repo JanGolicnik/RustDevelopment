@@ -8,6 +8,7 @@ use noise::{NoiseFn, Perlin};
 const HEIGHT_NOISE_SCALE: f64 = 1.0 / 64.0;
 const REGIONAL_HEIGHT_NOISE_SCALE: f64 = 1.0 / 256.0;
 const MOUNTAIN_SCALE: f64 = 128.0;
+const NOISE_BLOCK_THRESHOLD: f64 = 0.85;
 
 #[derive(Copy, Clone)]
 enum BlockSide {
@@ -153,7 +154,7 @@ impl ChunkGrid {
 
                     let noise_val_above =
                         sample(noise, [world_x as f64, world_y as f64, world_z as f64]);
-                    if noise_val_above > 0.85 {
+                    if noise_val_above > NOISE_BLOCK_THRESHOLD {
                         if world_y < 7 {
                             ret.set(x, y, z, Block { id: SAND });
                             continue;
@@ -162,12 +163,12 @@ impl ChunkGrid {
                             noise,
                             [world_x as f64, world_y as f64 + 1.0, world_z as f64],
                         );
-                        if above_value > 0.85 {
+                        if above_value > NOISE_BLOCK_THRESHOLD {
                             let above_value = sample(
                                 noise,
                                 [world_x as f64, world_y as f64 + 5.0, world_z as f64],
                             );
-                            if above_value > 0.85 {
+                            if above_value > NOISE_BLOCK_THRESHOLD {
                                 ret.set(x, y, z, Block { id: STONE });
                             } else {
                                 ret.set(x, y, z, Block { id: DIRT });
@@ -183,7 +184,7 @@ impl ChunkGrid {
         ret
     }
 
-    pub fn to_mesh(&self, pos: &[i32; 3]) -> Mesh {
+    pub fn to_mesh(&self, pos: &[i32; 3], noise: &Perlin) -> Mesh {
         let mut positions: Vec<[f32; 3]> = Vec::new();
         let mut normals: Vec<[f32; 3]> = Vec::new();
         let mut uvs: Vec<[f32; 2]> = Vec::new();
@@ -202,28 +203,68 @@ impl ChunkGrid {
                         let fy = pos[1] as f32 + y as f32 - CHUNK_SIZE as f32 * 0.5;
                         let fz = pos[2] as f32 + z as f32 - CHUNK_SIZE as f32 * 0.5;
 
+                        let noisex = pos[0] as f64 + x as f64;
+                        let noisey = pos[1] as f64 + y as f64;
+                        let noisez = pos[2] as f64 + z as f64;
+
                         // dont look at this pls <3
-                        if x == CHUNK_SIZE - 1 || !self.is_filled(x + 1, y, z) {
+                        if x == CHUNK_SIZE - 1 {
+                            if sample(noise, [noisex + 1.0f64, noisey, noisez])
+                                < NOISE_BLOCK_THRESHOLD
+                            {
+                                add_plane(fx, fy, fz, BlockSide::X, false, block_id);
+                            }
+                        } else if !self.is_filled(x + 1, y, z) {
                             add_plane(fx, fy, fz, BlockSide::X, false, block_id);
                         }
 
-                        if x == 0 || !self.is_filled(x - 1, y, z) {
+                        if x == 0 {
+                            if sample(noise, [noisex - 1.0f64, noisey, noisez])
+                                < NOISE_BLOCK_THRESHOLD
+                            {
+                                add_plane(fx, fy, fz, BlockSide::X, true, block_id);
+                            }
+                        } else if !self.is_filled(x - 1, y, z) {
                             add_plane(fx, fy, fz, BlockSide::X, true, block_id);
                         }
 
-                        if y == CHUNK_SIZE - 1 || !self.is_filled(x, y + 1, z) {
+                        if y == CHUNK_SIZE - 1 {
+                            if sample(noise, [noisex, noisey + 1.0f64, noisez])
+                                < NOISE_BLOCK_THRESHOLD
+                            {
+                                add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
+                            }
+                        } else if !self.is_filled(x, y + 1, z) {
                             add_plane(fx, fy, fz, BlockSide::Y, false, block_id);
                         }
 
-                        if y == 0 || !self.is_filled(x, y - 1, z) {
+                        if y == 0 {
+                            if sample(noise, [noisex, noisey - 1.0f64, noisez])
+                                < NOISE_BLOCK_THRESHOLD
+                            {
+                                add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
+                            }
+                        } else if !self.is_filled(x, y - 1, z) {
                             add_plane(fx, fy, fz, BlockSide::Y, true, block_id);
                         }
 
-                        if z == CHUNK_SIZE - 1 || !self.is_filled(x, y, z + 1) {
+                        if z == CHUNK_SIZE - 1 {
+                            if sample(noise, [noisex, noisey, noisez + 1.0f64])
+                                < NOISE_BLOCK_THRESHOLD
+                            {
+                                add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
+                            }
+                        } else if !self.is_filled(x, y, z + 1) {
                             add_plane(fx, fy, fz, BlockSide::Z, false, block_id);
                         }
 
-                        if z == 0 || !self.is_filled(x, y, z - 1) {
+                        if z == 0 {
+                            if sample(noise, [noisex, noisey, noisez - 1.0f64])
+                                < NOISE_BLOCK_THRESHOLD
+                            {
+                                add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
+                            }
+                        } else if !self.is_filled(x, y, z - 1) {
                             add_plane(fx, fy, fz, BlockSide::Z, true, block_id);
                         }
                     }

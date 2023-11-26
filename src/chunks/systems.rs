@@ -57,6 +57,7 @@ pub fn spawn_chunks(
     for (entity, chunk) in &despawn_queue.0 {
         commands.entity(*entity).despawn();
         chunk_map.entities.remove(chunk);
+        chunk_map.chunks.remove(chunk);
     }
     despawn_queue.0.clear();
 }
@@ -65,7 +66,7 @@ pub fn update_chunks(
     mut spawn_queue: ResMut<ChunkSpawnQueue>,
     mut despawn_queue: ResMut<ChunkDespawnQueue>,
     player_query: Query<&Transform, With<Player>>,
-    chunk_query: Query<(&Chunk, Entity), (With<Chunk>, Without<Player>)>,
+    chunk_query: Query<(&Chunk, Entity), Without<Player>>,
 ) {
     println!("update_chunks");
     let player_transform = player_query.single();
@@ -83,19 +84,12 @@ pub fn update_chunks(
                 let y = y + current_chunk.0[1];
                 let z = z + current_chunk.0[2];
                 let chunk = Chunk([x, y, z]);
-                if spawn_queue.0.contains(&chunk) {
-                    continue;
-                }
                 spawn_queue.0.push(chunk);
             }
         }
     }
 
     for (chunk, entity) in chunk_query.iter() {
-        if spawn_queue.0.contains(chunk) {
-            continue;
-        }
-
         let chunk_world_x = chunk.0[0] as f32 * CHUNK_SIZE as f32;
         let chunk_world_y = chunk.0[1] as f32 * CHUNK_SIZE as f32;
         let chunk_world_z = chunk.0[2] as f32 * CHUNK_SIZE as f32;
@@ -125,7 +119,7 @@ pub fn create_chunks(
         let noise = Perlin::new(4);
         let task = thread_pool.spawn(async move {
             let grid = ChunkMap::gen(&chunk, &noise);
-            let mesh = grid.to_mesh(&ChunkMap::chunk_to_world_coords(&Chunk(coords)));
+            let mesh = grid.to_mesh(&ChunkMap::chunk_to_world_coords(&Chunk(coords)), &noise);
             Some((entity, chunk, grid, mesh))
         });
         commands.spawn(ComputeChunk(task));

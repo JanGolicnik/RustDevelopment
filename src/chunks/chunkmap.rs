@@ -11,17 +11,6 @@ pub struct ChunkMap {
 }
 
 impl ChunkMap {
-    // pub fn remesh(&self, chunk: &Chunk) -> Option<Mesh> {
-    // if let Some(chunkgrid) = self.chunks.get(chunk) {
-    //     return Some(chunkgrid.to_mesh(&Self::chunk_to_world_coords(chunk)));
-    // }
-    // None
-    // }
-
-    // pub fn create_mesh(grid: &ChunkGrid, pos: &[i32; 3]) -> Mesh {
-    //     grid.to_mesh(&Self::chunk_to_world_coords(&Chunk(*pos)))
-    // }
-
     pub fn gen(chunk: &Chunk, noise: &Perlin) -> ChunkGrid {
         ChunkGrid::generate(Self::chunk_to_world_coords(chunk), noise)
     }
